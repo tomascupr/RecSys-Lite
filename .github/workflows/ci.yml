@@ -23,8 +23,25 @@ jobs:
         run: poetry run ruff .
       - name: Type-check with mypy
         run: poetry run mypy --strict src
-      - name: Run tests
-        run: poetry run pytest --maxfail=1 --disable-warnings -q
+      - name: Run tests and capture logs
+        run: |
+          mkdir -p artifacts logs
+          set -o pipefail
+          poetry run pytest --maxfail=1 --disable-warnings -q --junitxml=artifacts/test-results.xml 2>&1 | tee logs/test-output.log
+
+      - name: Upload test results artifact
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-results
+          path: artifacts/test-results.xml
+
+      - name: Upload workflow logs artifact
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: workflow-logs
+          path: logs/test-output.log
 
   docker-build:
     runs-on: ubuntu-latest

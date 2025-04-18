@@ -30,9 +30,8 @@ if not hasattr(MagicMock, "__recsys_patched__"):
         # Case 2: optimize_hyperparameters – we just need to return a dict
         if "model_type" in kwargs or (args and isinstance(args[0], str)):
             try:
-                from recsys_lite.cli import (
-                    OptunaOptimizer as _Opt,  # type: ignore[attr-defined] # patched MagicMock in tests
-                )
+                # In test mode, this module is patched to mock OptunaOptimizer
+                from recsys_lite.cli import OptunaOptimizer as _Opt  # type: ignore
                 _opt_instance = _Opt()  # type: ignore[call-arg]
                 _opt_instance.optimize()  # type: ignore[call-arg]
                 _opt_instance.get_best_model()  # type: ignore[call-arg]

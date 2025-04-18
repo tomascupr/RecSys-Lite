@@ -1,0 +1,61 @@
+name: Push Test Summary
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+
+jobs:
+  test-summary:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion != 'skipped'
+    
+    steps:
+      - name: Download workflow artifact
+        uses: dawidd6/action-download-artifact@v2
+        with:
+          workflow: ci.yml
+          run_id: ${{ github.event.workflow_run.id }}
+          name: test-results
+          path: artifacts
+      
+      - name: Create test summary
+        run: |
+          if [ -f artifacts/test-results.xml ]; then
+            echo "Test results found!"
+            
+            # Get pass/fail count from XML
+            TOTAL=$(grep -c "<testcase" artifacts/test-results.xml || echo "0")
+            FAILURES=$(grep -c "<failure" artifacts/test-results.xml || echo "0")
+            ERRORS=$(grep -c "<error" artifacts/test-results.xml || echo "0")
+            SKIPPED=$(grep -c "<skipped" artifacts/test-results.xml || echo "0")
+            PASSED=$((TOTAL - FAILURES - ERRORS - SKIPPED))
+            
+            echo "Test Summary:"
+            echo "- Total: $TOTAL"
+            echo "- Passed: $PASSED"
+            echo "- Failed: $FAILURES"
+            echo "- Errors: $ERRORS"
+            echo "- Skipped: $SKIPPED"
+            
+            # Create GitHub summary
+            echo "# Test Results Summary" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Category | Count |" >> $GITHUB_STEP_SUMMARY
+            echo "| -------- | ----- |" >> $GITHUB_STEP_SUMMARY
+            echo "| Total | $TOTAL |" >> $GITHUB_STEP_SUMMARY
+            echo "| ✅ Passed | $PASSED |" >> $GITHUB_STEP_SUMMARY
+            echo "| ❌ Failed | $FAILURES |" >> $GITHUB_STEP_SUMMARY
+            echo "| ⚠️ Errors | $ERRORS |" >> $GITHUB_STEP_SUMMARY
+            echo "| ⏭️ Skipped | $SKIPPED |" >> $GITHUB_STEP_SUMMARY
+            
+            # Set job status based on results
+            if [ "$FAILURES" -gt 0 ] || [ "$ERRORS" -gt 0 ]; then
+              echo "Tests had failures or errors"
+              exit 1
+            fi
+          else
+            echo "No test results found"
+            echo "# No test results found" >> $GITHUB_STEP_SUMMARY
+          fi

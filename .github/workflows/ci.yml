@@ -68,8 +68,56 @@ jobs:
     - name: Run tests
       env:
         CI: "true"
+      id: test
       run: |
-        python -m pytest --cov=src tests/
+        python -m pytest --cov=src tests/ --junitxml=test-results.xml
+    
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: test-results
+        path: test-results.xml
+    
+    - name: Publish Test Results
+      uses: EnricoMi/publish-unit-test-result-action@v2
+      if: always()
+      with:
+        files: test-results.xml
+
+  notify:
+    needs: test
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+    - name: Check test job status
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const testJob = ${{ toJSON(needs.test.result) }};
+          const repo = context.repo.owner + '/' + context.repo.repo;
+          const sha = context.sha.substring(0, 7);
+          
+          let message = '';
+          
+          if (testJob === 'success') {
+            message = `✅ CI tests PASSED for ${repo}@${sha}`;
+          } else {
+            message = `❌ CI tests FAILED for ${repo}@${sha}`;
+          }
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: message
+          }).catch(e => {
+            if (context.eventName === 'push') {
+              console.log('Not a PR - skipping comment');
+            } else {
+              console.error('Failed to post comment:', e);
+            }
+          });
 
   docker:
     runs-on: ubuntu-latest

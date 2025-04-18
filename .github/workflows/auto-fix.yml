@@ -35,6 +35,7 @@ jobs:
           run_id: ${{ github.event.workflow_run.id }}
           name: test-results
           path: artifacts
+          if_no_artifact_found: ignore
       
       - name: Download workflow logs
         uses: dawidd6/action-download-artifact@v3

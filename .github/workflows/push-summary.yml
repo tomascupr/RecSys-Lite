@@ -35,7 +35,13 @@ jobs:
             FAILURES=$(grep -c "<failure" artifacts/test-results.xml || echo "0")
             ERRORS=$(grep -c "<error" artifacts/test-results.xml || echo "0")
             SKIPPED=$(grep -c "<skipped" artifacts/test-results.xml || echo "0")
-            PASSED=$((TOTAL - FAILURES - ERRORS - SKIPPED))
+            # Ensure numeric defaults for arithmetic
+            TOTAL=${TOTAL:-0}
+            FAILURES=${FAILURES:-0}
+            ERRORS=${ERRORS:-0}
+            SKIPPED=${SKIPPED:-0}
+            # Calculate passed tests safely
+            PASSED=$(expr "$TOTAL" - "$FAILURES" - "$ERRORS" - "$SKIPPED")
             
             echo "Test Summary:"
             echo "- Total: $TOTAL"

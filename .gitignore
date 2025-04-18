@@ -83,3 +83,6 @@ dist/
 # Parquet and generated data
 # Uncomment if you don't want to include sample data
 # *.parquet
+
+# Claude development files
+CLAUDE.md

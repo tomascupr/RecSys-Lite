@@ -1,12 +1,10 @@
 """Tests for Faiss index builder."""
 
-import os
 import tempfile
 from pathlib import Path
 
 import numpy as np
 import pytest
-
 from recsys_lite.indexing import FaissIndexBuilder
 
 

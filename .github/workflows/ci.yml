@@ -31,14 +31,14 @@ jobs:
 
       - name: Upload test results artifact
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v2
         with:
           name: test-results
           path: artifacts/test-results.xml
 
       - name: Upload workflow logs artifact
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v2
         with:
           name: workflow-logs
           path: logs/test-output.log

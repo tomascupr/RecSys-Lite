@@ -115,7 +115,8 @@ def load_item_data(data_dir: Path) -> Dict[str, Dict[str, Any]]:
         if path.exists():
             try:
                 with open(path, "r") as f:
-                    return json.load(f)
+                    result: Dict[str, Dict[str, Any]] = json.load(f)
+                    return result
             except json.JSONDecodeError:
                 logger.warning(f"Error parsing item data from {path}")
     
@@ -139,7 +140,7 @@ def setup_recommendation_service(model_dir: Path, data_dir: Optional[Path] = Non
     user_mapping, item_mapping, reverse_user_mapping, reverse_item_mapping = load_mappings(model_path)
     model, model_type = load_model(model_path)
     faiss_index = load_faiss_index(model_path)
-    item_data = load_item_data(data_path)
+    item_metadata = load_item_data(data_path)
     
     # Create empty user-item matrix for tracking interactions
     user_item_matrix = sp.csr_matrix((len(user_mapping), len(item_mapping)))

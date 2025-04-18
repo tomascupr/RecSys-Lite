@@ -34,7 +34,7 @@ def get_recommendation_service(state: APIState = Depends(get_api_state)) -> Reco
     """
     if not hasattr(state, 'recommendation_service') or state.recommendation_service is None:
         raise RuntimeError("Recommendation service not initialized")
-    return state.recommendation_service
+    return cast(RecommendationService, state.recommendation_service)
 
 
 def get_stats(state: APIState = Depends(get_api_state)) -> Dict[str, Any]:

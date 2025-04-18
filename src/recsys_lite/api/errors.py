@@ -1,7 +1,7 @@
 """Error handling for RecSys-Lite API."""
 
 import logging
-from typing import Any, Callable, Dict, Type
+from typing import Any, Callable, Dict, Optional, Type, TypedDict, cast
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
@@ -16,7 +16,7 @@ class RecSysError(Exception):
     status_code: int = status.HTTP_500_INTERNAL_SERVER_ERROR
     detail: str = "An unexpected error occurred"
     
-    def __init__(self, detail: str = None):
+    def __init__(self, detail: Optional[str] = None):
         """Initialize exception.
         
         Args:
@@ -39,7 +39,7 @@ class UserNotFoundError(NotFoundError):
     
     detail = "User not found"
     
-    def __init__(self, user_id: str = None):
+    def __init__(self, user_id: Optional[str] = None):
         """Initialize exception.
         
         Args:
@@ -54,7 +54,7 @@ class ItemNotFoundError(NotFoundError):
     
     detail = "Item not found"
     
-    def __init__(self, item_id: str = None):
+    def __init__(self, item_id: Optional[str] = None):
         """Initialize exception.
         
         Args:
@@ -135,8 +135,27 @@ def add_error_handlers(app: FastAPI) -> None:
         )
 
 
-ERROR_TYPES: Dict[Type[Exception], Callable[[Exception], Dict[str, Any]]] = {
-    UserNotFoundError: lambda e: {"status_code": e.status_code, "detail": e.detail},
-    ItemNotFoundError: lambda e: {"status_code": e.status_code, "detail": e.detail},
-    ModelNotInitializedError: lambda e: {"status_code": e.status_code, "detail": e.detail},
+class ErrorResponse(TypedDict):
+    """Type definition for error response."""
+    
+    status_code: int
+    detail: str
+
+
+def _create_error_response(error: RecSysError) -> ErrorResponse:
+    """Create error response from RecSys error.
+    
+    Args:
+        error: RecSys error
+        
+    Returns:
+        Error response
+    """
+    return {"status_code": error.status_code, "detail": error.detail}
+
+
+ERROR_TYPES: Dict[Type[Exception], Callable[[Exception], ErrorResponse]] = {
+    UserNotFoundError: lambda e: _create_error_response(cast(RecSysError, e)),
+    ItemNotFoundError: lambda e: _create_error_response(cast(RecSysError, e)),
+    ModelNotInitializedError: lambda e: _create_error_response(cast(RecSysError, e)),
 }

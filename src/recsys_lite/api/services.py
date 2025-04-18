@@ -3,6 +3,7 @@
 from typing import Any, Dict, List, Optional, Tuple, cast
 
 import numpy as np
+from numpy.typing import NDArray
 import scipy.sparse as sp
 
 from recsys_lite.api.errors import ItemNotFoundError, ModelNotInitializedError, UserNotFoundError
@@ -17,7 +18,7 @@ class VectorService:
         model: BaseRecommender, 
         user_idx: int,
         vector_size: Optional[int] = None
-    ) -> np.ndarray:
+    ) -> NDArray[np.float32]:
         """Get user vector from model.
         
         Args:
@@ -52,7 +53,7 @@ class VectorService:
         item_idx: int,
         item_id: str,
         vector_size: Optional[int] = None
-    ) -> np.ndarray:
+    ) -> NDArray[np.float32]:
         """Get item vector from model.
         
         Args:
@@ -190,7 +191,8 @@ class RecommendationService:
             item_ids.append(item_id)
             scores.append(float(score))
         
-        return item_ids, scores, self._get_item_metadata(item_ids, item_data)
+        scores_list = [float(score) for score in scores]
+        return item_ids, scores_list, self._get_item_metadata(item_ids, item_data)
     
     def _get_direct_recommendations(
         self, 
@@ -228,7 +230,8 @@ class RecommendationService:
         # Convert item indices to IDs
         item_ids = [self.reverse_item_mapping.get(int(idx), f"unknown_{idx}") for idx in item_indices]
         
-        return item_ids, scores, self._get_item_metadata(item_ids, item_data)
+        scores_list = [float(score) for score in scores]
+        return item_ids, scores_list, self._get_item_metadata(item_ids, item_data)
     
     def _get_item_metadata(
         self, 
@@ -312,4 +315,5 @@ class RecommendationService:
             if len(item_ids) >= k:
                 break
         
-        return item_ids, scores, self._get_item_metadata(item_ids, item_data)
+        scores_list = [float(score) for score in scores]
+        return item_ids, scores_list, self._get_item_metadata(item_ids, item_data)

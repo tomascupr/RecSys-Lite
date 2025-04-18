@@ -1,6 +1,6 @@
 """Pydantic models for the RecSys-Lite API."""
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel
 
@@ -33,4 +33,4 @@ class MetricsResponse(BaseModel):
     error_count: int
     recommendations_per_second: float
     model_type: Optional[str] = None
-    model_info: Optional[dict] = None
+    model_info: Optional[Dict[str, int]] = None

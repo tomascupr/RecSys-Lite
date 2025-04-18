@@ -11,7 +11,7 @@ from recsys_lite.models.base import BaseRecommender
 class APIState:
     """Container for API shared state."""
     
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize API state."""
         # Model and mapping data
         self.user_mapping: Dict[str, int] = {}

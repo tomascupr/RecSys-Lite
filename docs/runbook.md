@@ -42,36 +42,58 @@ RecSys-Lite is a lightweight recommendation system for small e-commerce shops. I
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/username/recsys-lite.git
+   git clone https://github.com/tomascupr/recsys-lite.git
    cd recsys-lite
    ```
 
-2. Configure environment (optional):
+2. Create directories for data persistence:
+   ```bash
+   mkdir -p data/incremental model_artifacts/{als,bpr,item2vec,lightfm}
+   ```
+
+3. Configure environment (optional):
    ```bash
    # Create .env file with configuration
    cat > .env << EOL
    MODEL_TYPE=als
    API_PORT=8000
    WORKER_INTERVAL=60
+   LOG_LEVEL=INFO
    EOL
    ```
 
-3. Start the system:
+4. Start the system:
    ```bash
    docker compose -f docker/docker-compose.yml up -d
    ```
 
-4. Verify deployment:
+5. Verify deployment:
    ```bash
    curl http://localhost:8000/health
    ```
+
+Expected response:
+```json
+{
+  "status": "ok",
+  "version": "0.1.1",
+  "model_type": "als",
+  "uptime_seconds": 5
+}
+```
 
 #### Manual Deployment
 
 1. Install dependencies:
    ```bash
+   # Create a virtual environment
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+
    # Install Python dependencies
    pip install -e .
+   # Or with Poetry
+   poetry install
    ```
 
 2. Create directory structure:
@@ -81,6 +103,10 @@ RecSys-Lite is a lightweight recommendation system for small e-commerce shops. I
 
 3. Start API service:
    ```bash
+   # Using CLI
+   recsys-lite serve --model-dir model_artifacts/als --port 8000
+
+   # Or using uvicorn directly
    uvicorn recsys_lite.api.main:app --host 0.0.0.0 --port 8000
    ```
 
@@ -105,6 +131,17 @@ ts: int64            # Unix timestamp in seconds
 qty: int             # Quantity (e.g., number of items purchased, viewed)
 ```
 
+Sample data:
+```
+┌────────────┬────────────┬────────────┬──────┐
+│  user_id   │  item_id   │     ts     │ qty  │
+├────────────┼────────────┼────────────┼──────┤
+│ user_12345 │ item_67890 │ 1626533119 │ 1    │
+│ user_12345 │ item_24680 │ 1626533135 │ 2    │
+│ user_67890 │ item_13579 │ 1626533257 │ 1    │
+└────────────┴────────────┴────────────┴──────┘
+```
+
 #### Items (CSV)
 ```
 item_id: string      # Unique item identifier (primary key)
@@ -114,29 +151,46 @@ price: float         # Item price
 img_url: string      # URL to item image
 ```
 
+Sample data:
+```
+┌────────────┬──────────────┬────────────┬───────┬───────────────────────────────┐
+│  item_id   │   category   │   brand    │ price │           img_url             │
+├────────────┼──────────────┼────────────┼───────┼───────────────────────────────┤
+│ item_67890 │ Electronics  │ TechBrand  │ 99.99 │ https://example.com/img1.jpg  │
+│ item_24680 │ Clothing     │ FashionCo  │ 49.99 │ https://example.com/img2.jpg  │
+│ item_13579 │ Home         │ HomeMakers │ 29.99 │ https://example.com/img3.jpg  │
+└────────────┴──────────────┴────────────┴───────┴───────────────────────────────┘
+```
+
 ### Initial Data Load
 
 Load initial data into the DuckDB database:
 
 ```bash
-# From host machine
-docker exec -it recsys-lite_recsys-lite_1 recsys-lite ingest \
+# Using Docker
+docker exec -it recsys-lite_api recsys-lite ingest \
   --events /data/events.parquet \
   --items /data/items.csv \
   --db /data/recsys.db
+
+# Direct CLI usage
+recsys-lite ingest \
+  --events data/events.parquet \
+  --items data/items.csv \
+  --db data/recsys.db
 ```
 
 ### Incremental Data Loading
 
-For incremental data loading, place new event data in Parquet format in the `/data/incremental` directory.
+For incremental data loading, place new event data in Parquet format in the `/data/incremental` directory with filenames containing timestamps (e.g., `events_20230315.parquet`).
 
 The update worker will automatically detect and process these files based on their modification time.
 
 ```bash
 # Manual incremental load (if needed)
-docker exec -it recsys-lite_recsys-lite_1 recsys-lite ingest \
-  --events /data/incremental/events_$(date +%Y%m%d).parquet \
-  --db /data/recsys.db
+recsys-lite ingest \
+  --events data/incremental/events_$(date +%Y%m%d).parquet \
+  --db data/recsys.db
 ```
 
 ### Schema Management
@@ -144,7 +198,8 @@ docker exec -it recsys-lite_recsys-lite_1 recsys-lite ingest \
 The database schema is automatically created during ingestion. To inspect the schema:
 
 ```bash
-docker exec -it recsys-lite_recsys-lite_1 recsys-lite db-info --db /data/recsys.db
+# Connect to DuckDB database directly
+duckdb data/recsys.db "SELECT * FROM information_schema.tables; SELECT * FROM information_schema.columns WHERE table_name = 'events';"
 ```
 
 ## Model Training
@@ -167,25 +222,25 @@ Train your first model after data ingestion:
 
 ```bash
 # Train ALS model
-docker exec -it recsys-lite_recsys-lite_1 recsys-lite train als \
-  --db /data/recsys.db \
-  --output /app/model_artifacts/als
+recsys-lite train als \
+  --db data/recsys.db \
+  --output model_artifacts/als
 
 # Train item2vec model
-docker exec -it recsys-lite_recsys-lite_1 recsys-lite train item2vec \
-  --db /data/recsys.db \
-  --output /app/model_artifacts/item2vec
+recsys-lite train item2vec \
+  --db data/recsys.db \
+  --output model_artifacts/item2vec
 
 # Train LightFM model (with item features)
-docker exec -it recsys-lite_recsys-lite_1 recsys-lite train lightfm \
-  --db /data/recsys.db \
-  --output /app/model_artifacts/lightfm \
+recsys-lite train lightfm \
+  --db data/recsys.db \
+  --output model_artifacts/lightfm \
   --use-item-features
 
 # Train GRU4Rec model (session-based)
-docker exec -it recsys-lite_recsys-lite_1 recsys-lite train gru4rec \
-  --db /data/recsys.db \
-  --output /app/model_artifacts/gru4rec
+recsys-lite train gru4rec \
+  --db data/recsys.db \
+  --output model_artifacts/gru4rec
 ```
 
 ### Hyperparameter Optimization
@@ -194,11 +249,11 @@ Improve model performance with hyperparameter optimization:
 
 ```bash
 # Optimize ALS model (20 trials)
-docker exec -it recsys-lite_recsys-lite_1 recsys-lite optimize als \
-  --db /data/recsys.db \
+recsys-lite optimize als \
+  --db data/recsys.db \
   --trials 20 \
   --metric "ndcg@20" \
-  --output /app/model_artifacts/als_optimized
+  --output model_artifacts/als_optimized
 ```
 
 The optimization will explore different parameter combinations:
@@ -208,28 +263,44 @@ The optimization will explore different parameter combinations:
 - For LightFM: no_components, learning_rate, item_alpha, user_alpha
 - For GRU4Rec: hidden_size, dropout, learning_rate
 
-### Full Retraining Schedule
+### Model Evaluation
 
-Schedule full retraining weekly or monthly:
+After training, evaluate the model's performance:
 
 ```bash
-# Automated retraining script
+# Evaluate model
+recsys-lite evaluate \
+  --model-dir model_artifacts/als \
+  --db data/recsys.db
+```
+
+This will output performance metrics such as:
+- Hit Rate at K (HR@10, HR@20)
+- Normalized Discounted Cumulative Gain (NDCG@10, NDCG@20)
+- Coverage and diversity metrics
+
+### Full Retraining Schedule
+
+Schedule full retraining weekly or monthly using a crontab entry:
+
+```bash
+# Create retraining script
 cat > retrain.sh << 'EOF'
 #!/bin/bash
 DATE=$(date +%Y%m%d)
 MODEL_TYPE="als"  # or bpr, item2vec, lightfm
-DB_PATH="/data/recsys.db"
-OUTPUT_DIR="/app/model_artifacts/${MODEL_TYPE}_${DATE}"
-CURRENT_DIR="/app/model_artifacts/${MODEL_TYPE}"
+DB_PATH="data/recsys.db"
+OUTPUT_DIR="model_artifacts/${MODEL_TYPE}_${DATE}"
+CURRENT_DIR="model_artifacts/${MODEL_TYPE}"
 
 # Train new model
-docker exec -it recsys-lite_recsys-lite_1 recsys-lite train $MODEL_TYPE \
+recsys-lite train $MODEL_TYPE \
   --db $DB_PATH \
   --output $OUTPUT_DIR
 
 # If successful, replace current model
 if [ $? -eq 0 ]; then
-  docker exec -it recsys-lite_recsys-lite_1 cp -r $OUTPUT_DIR/* $CURRENT_DIR/
+  cp -r $OUTPUT_DIR/* $CURRENT_DIR/
   echo "Model updated successfully"
 else
   echo "Training failed, keeping current model"
@@ -253,7 +324,7 @@ The RecSys-Lite API provides endpoints for recommendations and monitoring.
 
 | Endpoint | Method | Description | Parameters |
 |----------|--------|-------------|------------|
-| `/recommend` | GET | Get user recommendations | `user_id`, `k` (number of items) |
+| `/recommend` | GET | Get user recommendations | `user_id`, `k` (number of items), `use_faiss` (boolean) |
 | `/similar-items` | GET | Get similar items | `item_id`, `k` (number of items) |
 | `/health` | GET | Health check | None |
 | `/metrics` | GET | Performance metrics | None |
@@ -296,23 +367,46 @@ Recommendations are returned in JSON format with item metadata:
 }
 ```
 
+### Error Responses
+
+The API may return these error responses:
+
+| Status Code | Description | Example |
+|-------------|-------------|---------|
+| 400 | Bad Request | Invalid parameters |
+| 404 | Not Found | User ID or Item ID not found |
+| 422 | Unprocessable Entity | Invalid request format |
+| 500 | Internal Server Error | Server-side error |
+
 ### API Configuration
 
 The API can be configured using environment variables:
 
 ```bash
-# Update API configuration
-docker exec -it recsys-lite_recsys-lite_1 bash -c 'cat > /app/.env << EOL
-MODEL_DIR=/app/model_artifacts/als
-DB_PATH=/data/recsys.db
+# Update API configuration with environment variables
+export MODEL_DIR=model_artifacts/als
+export DB_PATH=data/recsys.db
+export LOG_LEVEL=INFO
+export MAX_RECOMMENDATIONS=50
+export CACHE_EXPIRY=300
+
+# Or create a .env file
+cat > .env << EOL
+MODEL_DIR=model_artifacts/als
+DB_PATH=data/recsys.db
 LOG_LEVEL=INFO
 MAX_RECOMMENDATIONS=50
 CACHE_EXPIRY=300
-EOL'
-
-# Restart the service to apply changes
-docker restart recsys-lite_recsys-lite_1
+EOL
 ```
+
+### API Security
+
+The API is designed for internal use and doesn't include authentication by default. For production deployment, consider:
+
+1. Deploying behind an API gateway or reverse proxy with authentication
+2. Implementing rate limiting to prevent abuse
+3. Restricting network access to trusted clients only
 
 ## Update Worker
 
@@ -321,35 +415,66 @@ The update worker keeps recommendations fresh by incrementally updating models w
 ### Update Process
 
 1. Worker polls for new events every `INTERVAL` seconds (default: 60)
-2. New events are converted to a sparse user-item matrix
-3. User factors are updated with `partial_fit_users`
-4. New item vectors are added to the Faiss index
+2. New events are retrieved from the incremental data directory
+3. Events are converted to a sparse user-item matrix
+4. User factors are updated with `partial_fit_users`
+5. New item vectors are added to the Faiss index
 
 ### Starting the Worker
 
 ```bash
-# Start worker manually (if not using Docker Compose)
-docker exec -it recsys-lite_recsys-lite_1 recsys-lite worker \
-  --model-dir /app/model_artifacts/als \
-  --db /data/recsys.db \
+# Start worker
+recsys-lite worker \
+  --model-dir model_artifacts/als \
+  --db data/recsys.db \
   --interval 60
+```
+
+### Worker Configuration
+
+Configure the worker using command-line parameters or environment variables:
+
+```bash
+# Using environment variables
+export MODEL_DIR=model_artifacts/als
+export DB_PATH=data/recsys.db
+export WORKER_INTERVAL=60
+export BATCH_SIZE=1000
+export THREADS=8
+
+# Start with custom configuration
+recsys-lite worker \
+  --model-dir $MODEL_DIR \
+  --db $DB_PATH \
+  --interval $WORKER_INTERVAL \
+  --batch-size $BATCH_SIZE \
+  --threads $THREADS
 ```
 
 ### Monitoring Worker Status
 
 ```bash
-# Check worker status
-docker exec -it recsys-lite_recsys-lite_1 recsys-lite worker status
+# Check worker process
+ps aux | grep "recsys-lite worker"
 
 # View worker logs
-docker exec -it recsys-lite_recsys-lite_1 tail -f /var/log/recsys-lite-worker.log
+tail -f logs/worker.log
 ```
 
 ### Restarting the Worker
 
 ```bash
+# Find worker process
+ps aux | grep "recsys-lite worker"
+
+# Kill worker process
+kill <PID>
+
 # Restart worker
-docker exec -it recsys-lite_recsys-lite_1 recsys-lite worker restart
+recsys-lite worker \
+  --model-dir model_artifacts/als \
+  --db data/recsys.db \
+  --interval 60
 ```
 
 ## Performance Tuning
@@ -360,21 +485,17 @@ Optimize RecSys-Lite for your specific workload:
 
 ```bash
 # Reduce memory usage for smaller deployments
-docker exec -it recsys-lite_recsys-lite_1 bash -c 'cat > /app/.env << EOL
-FAISS_NPROBE=5
-BATCH_SIZE=500
-CACHE_SIZE=100
-EOL'
+export FAISS_NPROBE=5
+export BATCH_SIZE=500
+export CACHE_SIZE=100
 ```
 
 ### CPU Optimization
 
 ```bash
 # Optimize for multi-core systems
-docker exec -it recsys-lite_recsys-lite_1 bash -c 'cat > /app/.env << EOL
-THREADS=8
-FAISS_USE_THREADS=1
-EOL'
+export THREADS=8
+export FAISS_USE_THREADS=1
 ```
 
 ### Model Size vs. Quality
@@ -389,10 +510,20 @@ Adjust model size based on your catalog:
 
 ```bash
 # Configure model size
-docker exec -it recsys-lite_recsys-lite_1 recsys-lite train als \
-  --db /data/recsys.db \
-  --output /app/model_artifacts/als \
+recsys-lite train als \
+  --db data/recsys.db \
+  --output model_artifacts/als \
   --params '{"factors": 150}'
+```
+
+### Faiss Index Configuration
+
+Configure Faiss for faster similarity search:
+
+```bash
+# Configure Faiss index for better performance
+export FAISS_NLIST=100  # Number of clusters (increase for larger catalogs)
+export FAISS_NPROBE=10  # Number of clusters to search (tradeoff between speed and accuracy)
 ```
 
 ## Monitoring
@@ -407,14 +538,26 @@ curl "http://localhost:8000/health"
 curl "http://localhost:8000/metrics"
 ```
 
+Example metrics response:
+```json
+{
+  "uptime_seconds": 3600,
+  "request_count": 1500,
+  "recommendation_count": 15000,
+  "error_count": 5,
+  "recommendations_per_second": 4.16,
+  "cache_hit_ratio": 0.85
+}
+```
+
 ### Log Inspection
 
 ```bash
 # View API logs
-docker logs recsys-lite_recsys-lite_1
+tail -f logs/api.log
 
-# View real-time logs
-docker logs -f recsys-lite_recsys-lite_1
+# View worker logs
+tail -f logs/worker.log
 ```
 
 ### Prometheus Integration
@@ -426,7 +569,7 @@ scrape_configs:
   - job_name: 'recsys-lite'
     scrape_interval: 15s
     static_configs:
-      - targets: ['recsys-lite:8000']
+      - targets: ['your-server:8000']
     metrics_path: '/metrics'
 ```
 
@@ -439,6 +582,7 @@ scrape_configs:
 | `recommendation_count` | Total recommendations served | N/A |
 | `error_count` | Failed requests | 0 |
 | `recommendations_per_second` | Throughput | Depends on workload |
+| `cache_hit_ratio` | Cache efficiency | >0.8 |
 
 ## Backup and Recovery
 
@@ -446,14 +590,16 @@ scrape_configs:
 
 ```bash
 # Backup DuckDB database
-docker exec -it recsys-lite_recsys-lite_1 bash -c 'cp /data/recsys.db /data/backups/recsys_$(date +%Y%m%d).db'
+mkdir -p backups/$(date +%Y%m%d)
+cp data/recsys.db backups/$(date +%Y%m%d)/recsys_$(date +%Y%m%d).db
 ```
 
 ### Model Artifacts Backup
 
 ```bash
 # Backup model artifacts
-docker exec -it recsys-lite_recsys-lite_1 bash -c 'tar -czf /data/backups/models_$(date +%Y%m%d).tar.gz /app/model_artifacts'
+mkdir -p backups/$(date +%Y%m%d)
+tar -czf backups/$(date +%Y%m%d)/models_$(date +%Y%m%d).tar.gz model_artifacts/
 ```
 
 ### Automated Backup Script
@@ -462,36 +608,45 @@ docker exec -it recsys-lite_recsys-lite_1 bash -c 'tar -czf /data/backups/models
 cat > backup.sh << 'EOF'
 #!/bin/bash
 DATE=$(date +%Y%m%d)
-BACKUP_DIR="/path/to/backups/$DATE"
+BACKUP_DIR="backups/$DATE"
 mkdir -p $BACKUP_DIR
 
 # Backup database
-docker exec recsys-lite_recsys-lite_1 bash -c "cp /data/recsys.db /data/backups/recsys_$DATE.db"
-docker cp recsys-lite_recsys-lite_1:/data/backups/recsys_$DATE.db $BACKUP_DIR/
+cp data/recsys.db $BACKUP_DIR/recsys_$DATE.db
 
 # Backup models
-docker exec recsys-lite_recsys-lite_1 bash -c "tar -czf /data/backups/models_$DATE.tar.gz /app/model_artifacts"
-docker cp recsys-lite_recsys-lite_1:/data/backups/models_$DATE.tar.gz $BACKUP_DIR/
+tar -czf $BACKUP_DIR/models_$DATE.tar.gz model_artifacts/
 
 # Clean up old backups (keep 30 days)
-find /path/to/backups -type d -mtime +30 -exec rm -rf {} \;
+find backups -type d -mtime +30 -exec rm -rf {} \;
 EOF
 
 chmod +x backup.sh
 ```
 
+Add to crontab for daily execution:
+```bash
+# Run every day at 1 AM
+0 1 * * * /path/to/backup.sh >> /path/to/backup.log 2>&1
+```
+
 ### Recovery Procedure
 
 ```bash
+# Choose backup date
+BACKUP_DATE=20230315
+
 # Restore database
-docker cp /path/to/backups/20230315/recsys_20230315.db recsys-lite_recsys-lite_1:/data/
+cp backups/$BACKUP_DATE/recsys_$BACKUP_DATE.db data/recsys.db
 
 # Restore models
-docker cp /path/to/backups/20230315/models_20230315.tar.gz recsys-lite_recsys-lite_1:/data/
-docker exec -it recsys-lite_recsys-lite_1 bash -c 'tar -xzf /data/models_20230315.tar.gz -C /'
+mkdir -p model_artifacts_backup  # Backup current models just in case
+mv model_artifacts model_artifacts_backup
+mkdir -p model_artifacts
+tar -xzf backups/$BACKUP_DATE/models_$BACKUP_DATE.tar.gz -C .
 
-# Restart service
-docker restart recsys-lite_recsys-lite_1
+# Restart services
+# (Restart API and worker processes)
 ```
 
 ## GDPR Compliance
@@ -511,10 +666,10 @@ Export all data associated with a user:
 
 ```bash
 # Export a user's data
-docker exec -it recsys-lite_recsys-lite_1 recsys-lite gdpr export-user \
+recsys-lite gdpr export-user \
   --user-id USER_ID \
-  --db /data/recsys.db \
-  --output /data/exports/user_USER_ID.json
+  --db data/recsys.db \
+  --output exports/user_USER_ID.json
 ```
 
 The export contains:
@@ -522,17 +677,52 @@ The export contains:
 - Items the user interacted with
 - Timestamps and quantities
 
+Example export format:
+```json
+{
+  "user_id": "user123",
+  "events": [
+    {
+      "item_id": "item456",
+      "timestamp": 1626533119,
+      "quantity": 1
+    },
+    {
+      "item_id": "item789",
+      "timestamp": 1626533257,
+      "quantity": 2
+    }
+  ],
+  "items": [
+    {
+      "item_id": "item456",
+      "category": "Electronics",
+      "brand": "TechBrand",
+      "price": 99.99,
+      "img_url": "https://example.com/images/item456.jpg"
+    },
+    {
+      "item_id": "item789",
+      "category": "Clothing",
+      "brand": "FashionCo",
+      "price": 49.99,
+      "img_url": "https://example.com/images/item789.jpg"
+    }
+  ],
+  "export_timestamp": 1689245631,
+  "export_date": "2023-07-13T12:00:31Z"
+}
+```
+
 ### User Data Deletion
 
 Delete a user's data from the system:
 
 ```bash
 # Delete a user's data
-docker exec -it recsys-lite_recsys-lite_1 recsys-lite gdpr delete-user \
+recsys-lite gdpr delete-user \
   --user-id USER_ID \
-  --db /data/recsys.db
-
-# Retrain models or wait for the update worker to reflect changes
+  --db data/recsys.db
 ```
 
 The deletion process:
@@ -545,10 +735,15 @@ The deletion process:
 Configure data retention period:
 
 ```bash
-# Set 6-month retention policy
-docker exec -it recsys-lite_recsys-lite_1 recsys-lite configure \
+# Set 6-month retention policy (180 days)
+recsys-lite configure \
   --retention-days 180
 ```
+
+The system will automatically:
+1. Identify events older than the retention period
+2. Remove them from the database
+3. Update models during the next retraining cycle
 
 ### Right to be Forgotten Workflow
 
@@ -557,6 +752,21 @@ docker exec -it recsys-lite_recsys-lite_1 recsys-lite configure \
 3. Provide confirmation with timestamp
 4. Document deletion in compliance log
 5. Rotate backups to ensure complete removal
+
+### Audit Trail
+
+All GDPR-related operations are logged in `logs/gdpr.log`:
+
+```bash
+# View GDPR audit log
+tail -f logs/gdpr.log
+```
+
+Log format:
+```
+2023-07-13 12:00:31 - DATA_EXPORT - user_id=user123 - success
+2023-07-13 12:15:42 - DATA_DELETION - user_id=user456 - success
+```
 
 ## Troubleshooting
 
@@ -569,36 +779,42 @@ docker exec -it recsys-lite_recsys-lite_1 recsys-lite configure \
 
 2. Check logs:
    ```bash
-   docker logs recsys-lite_recsys-lite_1
+   tail -f logs/api.log
    ```
 
 3. Verify database connection:
    ```bash
-   docker exec -it recsys-lite_recsys-lite_1 recsys-lite db-check --db /data/recsys.db
+   duckdb data/recsys.db "SELECT COUNT(*) FROM events;"
    ```
 
 4. Check model artifacts:
    ```bash
-   docker exec -it recsys-lite_recsys-lite_1 ls -la /app/model_artifacts
+   ls -la model_artifacts/als/
    ```
 
 5. Restart service:
    ```bash
-   docker restart recsys-lite_recsys-lite_1
+   # Kill and restart the API process
+   kill $(pgrep -f "recsys-lite serve")
+   recsys-lite serve --model-dir model_artifacts/als --port 8000
    ```
 
 ### Poor Recommendation Quality
 
 1. Check data quality:
    ```bash
-   docker exec -it recsys-lite_recsys-lite_1 recsys-lite validate --db /data/recsys.db
+   # Check event counts
+   duckdb data/recsys.db "SELECT COUNT(*) FROM events;"
+   
+   # Check user and item counts
+   duckdb data/recsys.db "SELECT COUNT(DISTINCT user_id) FROM events; SELECT COUNT(DISTINCT item_id) FROM events;"
    ```
 
 2. Check model metrics:
    ```bash
-   docker exec -it recsys-lite_recsys-lite_1 recsys-lite evaluate \
-     --model-dir /app/model_artifacts/als \
-     --db /data/recsys.db
+   recsys-lite evaluate \
+     --model-dir model_artifacts/als \
+     --db data/recsys.db
    ```
 
 3. Common issues and solutions:
@@ -610,21 +826,21 @@ docker exec -it recsys-lite_recsys-lite_1 recsys-lite configure \
 4. Try different model types:
    ```bash
    # Try BPR model instead of ALS
-   docker exec -it recsys-lite_recsys-lite_1 recsys-lite train bpr \
-     --db /data/recsys.db \
-     --output /app/model_artifacts/bpr
+   recsys-lite train bpr \
+     --db data/recsys.db \
+     --output model_artifacts/bpr
    ```
 
 ### Update Worker Issues
 
 1. Check worker status:
    ```bash
-   docker exec -it recsys-lite_recsys-lite_1 recsys-lite worker status
+   ps aux | grep "recsys-lite worker"
    ```
 
 2. Check worker logs:
    ```bash
-   docker exec -it recsys-lite_recsys-lite_1 cat /var/log/recsys-lite-worker.log
+   tail -f logs/worker.log
    ```
 
 3. Common issues:
@@ -634,20 +850,52 @@ docker exec -it recsys-lite_recsys-lite_1 recsys-lite configure \
 
 4. Restart worker:
    ```bash
-   docker exec -it recsys-lite_recsys-lite_1 recsys-lite worker restart
+   kill $(pgrep -f "recsys-lite worker")
+   recsys-lite worker --model-dir model_artifacts/als --db data/recsys.db --interval 60
    ```
 
 ### Database Corruption
 
 1. Check database integrity:
    ```bash
-   docker exec -it recsys-lite_recsys-lite_1 recsys-lite db-check \
-     --db /data/recsys.db
+   duckdb data/recsys.db "SELECT 1;"
    ```
 
-2. Restore from backup if necessary:
+2. Try to repair database:
    ```bash
-   docker exec -it recsys-lite_recsys-lite_1 cp /data/backups/recsys_20230315.db /data/recsys.db
+   duckdb_recovery data/recsys.db
+   ```
+
+3. Restore from backup if necessary:
+   ```bash
+   cp backups/20230315/recsys_20230315.db data/recsys.db
+   ```
+
+### Out of Memory Errors
+
+If you encounter out-of-memory errors:
+
+1. Reduce model size:
+   ```bash
+   # Train with smaller factors
+   recsys-lite train als \
+     --db data/recsys.db \
+     --output model_artifacts/als \
+     --params '{"factors": 50}'
+   ```
+
+2. Reduce batch size:
+   ```bash
+   export BATCH_SIZE=200
+   ```
+
+3. Implement data sampling:
+   ```bash
+   # Train on a sample of data
+   recsys-lite train als \
+     --db data/recsys.db \
+     --output model_artifacts/als \
+     --sample-rate 0.5
    ```
 
 ## Maintenance Schedule
@@ -655,23 +903,28 @@ docker exec -it recsys-lite_recsys-lite_1 recsys-lite configure \
 Follow this recommended maintenance schedule:
 
 ### Daily
+
 - Check API health (`curl http://localhost:8000/health`)
-- Review error logs
+- Review error logs (`tail -f logs/api.log | grep ERROR`)
 - Verify update worker status
+- Back up database and models
 
 ### Weekly
+
 - Run full model retraining
-- Backup database and models
 - Check recommendation metrics
 - Clean up old incremental files
+- Review performance metrics
 
 ### Monthly
+
 - Run hyperparameter optimization
 - Perform disk cleanup
-- Review performance metrics
 - Test recovery procedures
+- Review GDPR compliance logs
 
 ### Quarterly
+
 - Update to latest RecSys-Lite version
 - Audit GDPR compliance
 - Review and update retention policies

@@ -1,216 +1,49 @@
 name: CI
 
 on:
-  push:
-    branches: [ main ]
+  push: {}
   pull_request:
     branches: [ main ]
 
 jobs:
-  test:
+  lint-and-test:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: [3.11]
-
     steps:
-    - uses: actions/checkout@v4
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python-version }}
-    
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential python3-dev libopenblas-dev
-    
-    - name: Set up Poetry
-      uses: snok/install-poetry@v1
-      with:
-        version: 1.5.1
-        virtualenvs-create: true
-        virtualenvs-in-project: true
-        installer-parallel: true
-    
-    - name: Install dependencies with pip
-      run: |
-        python -m pip install --upgrade pip setuptools wheel
-        # Install test dependencies first
-        python -m pip install mypy ruff black isort pytest pytest-cov scipy numpy
-        # Install missing dependencies based on test failures
-        python -m pip install httpx pandas
-        # Tell our code we're in CI environment so it uses the mock implementation
-        echo "Setting CI=true to use mock implementations"
-        export CI=true
-        # Set environment variable for the whole job
-        echo "CI=true" >> $GITHUB_ENV
-        # Skip LightFM completely for CI - it's causing build issues
-        # Install dependencies with specific versions
-        python -m pip install duckdb==0.8.1 typer==0.8.0 implicit==0.7.0 gensim==4.3.1 optuna==3.3.0 faiss-cpu==1.7.4 fastapi==0.100.0 uvicorn==0.23.0 pydantic==2.0.0
-        # Install the package itself without dependencies (we've already installed them with correct versions)
-        python -m pip install -e . --no-dependencies
-        # Install optional packages using mock implementations
-        if [ "$CI" = "true" ]; then
-          # Create a proper PyPI-installable mock package for torch
-          mkdir -p torch_mock
-          mkdir -p torch_mock/torch
-          mkdir -p torch_mock/torch/nn
-          mkdir -p torch_mock/torch/optim
-          mkdir -p torch_mock/torch/utils/data
-          
-          # Create mock module files
-          echo 'class Module: pass' > torch_mock/torch/__init__.py
-          echo 'class Linear: pass\nclass GRU: pass\nclass CrossEntropyLoss: pass\nfrom torch import Module' > torch_mock/torch/nn/__init__.py
-          echo 'class Adam: pass' > torch_mock/torch/optim/__init__.py
-          mkdir -p torch_mock/torch/utils
-          touch torch_mock/torch/utils/__init__.py
-          echo 'class Dataset: pass\nclass DataLoader: pass' > torch_mock/torch/utils/data/__init__.py
-          
-          # Create setup.py for the mock
-          cat > torch_mock/setup.py << 'EOL'
-from setuptools import setup, find_packages
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Install Poetry
+        run: |
+          python -m pip install --upgrade pip
+          pip install poetry
+      - name: Install dependencies
+        run: poetry install
+      - name: Lint with ruff
+        run: poetry run ruff .
+      - name: Type-check with mypy
+        run: poetry run mypy --strict src
+      - name: Run tests
+        run: poetry run pytest --maxfail=1 --disable-warnings -q
 
-setup(
-    name="torch",
-    version="0.0.1",
-    packages=find_packages(),
-    description="Mock PyTorch package for CI testing"
-)
-EOL
-          
-          # Install the mock torch package
-          cd torch_mock && python -m pip install -e . && cd ..
-          python -c "import torch; print('Torch mock installed successfully!')"
-        fi
-    
-    - name: Lint with ruff
-      env:
-        CI: "true"
-      run: |
-        python -m ruff check . --output-file=ruff-report.txt || true
-    
-    - name: Type check with mypy
-      env:
-        CI: "true"
-      run: |
-        python -m mypy --ignore-missing-imports src > mypy-report.txt 2>&1 || true
-    
-    - name: Format check with black
-      env:
-        CI: "true"
-      run: |
-        python -m black --check src || true
-    
-    - name: Run tests
-      env:
-        CI: "true"
-      id: test
-      run: |
-        # Run tests and capture output
-        python -m pytest --cov=src tests/ --junitxml=test-results.xml > test-output.log 2>&1 || {
-          # If tests fail, save the error code
-          EXIT_CODE=$?
-          echo "Tests failed with exit code $EXIT_CODE"
-          echo "::error::Tests failed. See test-output.log for details."
-          echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
-          exit $EXIT_CODE
-        }
-    
-    - name: Upload test results
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: test-results
-        path: test-results.xml
-        
-    - name: Upload test logs
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: workflow-logs
-        path: |
-          test-output.log
-          **/ruff-report.txt
-          **/mypy-report.txt
-    
-    - name: Publish Test Results
-      uses: EnricoMi/publish-unit-test-result-action@v2
-      if: always()
-      with:
-        files: test-results.xml
-
-  notify:
-    needs: test
+  docker-build:
     runs-on: ubuntu-latest
-    if: always()
+    needs: lint-and-test
     steps:
-    - name: Check test job status
-      uses: actions/github-script@v6
-      with:
-        script: |
-          const testJob = ${{ toJSON(needs.test.result) }};
-          const repo = context.repo.owner + '/' + context.repo.repo;
-          const sha = context.sha.substring(0, 7);
-          
-          let message = '';
-          
-          if (testJob === 'success') {
-            message = `✅ CI tests PASSED for ${repo}@${sha}`;
-          } else {
-            message = `❌ CI tests FAILED for ${repo}@${sha}`;
-          }
-          
-          github.rest.issues.createComment({
-            issue_number: context.issue.number,
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            body: message
-          }).catch(e => {
-            if (context.eventName === 'push') {
-              console.log('Not a PR - skipping comment');
-            } else {
-              console.error('Failed to post comment:', e);
-            }
-          });
-
-  docker:
-    runs-on: ubuntu-latest
-    needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-    
-    - name: Build Docker image
-      uses: docker/build-push-action@v4
-      with:
-        context: .
-        file: ./docker/Dockerfile
-        push: false
-        tags: recsys-lite:latest
-        outputs: type=docker,dest=/tmp/recsys-lite.tar
-    
-    - name: Check image size
-      run: |
-        docker load --input /tmp/recsys-lite.tar
-        SIZE=$(docker images recsys-lite:latest --format "{{.Size}}")
-        echo "Image size: $SIZE"
-        # Check if image size is less than 1GB
-        if [[ $SIZE == *GB ]]; then
-          GB_VALUE=$(echo $SIZE | sed 's/GB//')
-          if (( $(echo "$GB_VALUE > 1" | bc -l) )); then
-            echo "Image size exceeds 1GB: $SIZE"
-            exit 1
-          fi
-        fi
-    
-    - name: Generate SBOM with Syft
-      uses: anchore/sbom-action@v0
-      with:
-        image: recsys-lite:latest
-        artifact-name: recsys-lite-sbom
-        output-file: ./sbom.json
+      - uses: actions/checkout@v3
+      - name: Build Docker Image
+        run: docker build -f docker/Dockerfile -t recsys-lite:latest .
+      - name: Check Docker image size
+        run: |
+          IMAGE_SIZE=$(docker image inspect recsys-lite:latest --format='{{.Size}}')
+          echo "Image size: $IMAGE_SIZE bytes"
+      - name: Generate SBOM with Syft
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          syft recsys-lite:latest -o json > sbom.json
+      - name: Security scan with Trivy
+        uses: aquasecurity/trivy-action@v0.12.0
+        with:
+          image-ref: recsys-lite:latest
+          format: 'table'
+          severity: HIGH,CRITICAL

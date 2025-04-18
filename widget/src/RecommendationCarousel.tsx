@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import useEmblaCarousel from 'embla-carousel-react';
+import { ChevronLeft, ChevronRight, ImageIcon } from 'lucide-react';
+
 import { cn } from './lib/utils';
+import { Card, CardContent } from './lib/components/ui/card';
+import { Button } from './lib/components/ui/button';
 
 export interface Recommendation {
   item_id: string;
@@ -93,23 +97,27 @@ export const RecommendationCarousel: React.FC<RecommendationCarouselProps> = ({
   }, [apiUrl, userId, count, fetchItemDetails, testRecommendations]);
 
   return (
-    <div className={cn('w-full', className)}>
-      <h2 className="text-xl font-semibold mb-4">{title}</h2>
+    <div className={cn('w-full', className)} data-testid="recommendation-carousel">
+      <h2 className="text-2xl font-semibold mb-4">{title}</h2>
       
       {isLoading && (
         <div className="flex justify-center items-center h-40">
-          <div className="animate-spin h-8 w-8 border-4 border-gray-300 border-t-blue-600 rounded-full" />
+          <div className="animate-spin h-8 w-8 border-4 border-gray-300 border-t-primary rounded-full" 
+               role="status" aria-label="Loading recommendations">
+            <span className="sr-only">Loading...</span>
+          </div>
         </div>
       )}
       
       {error && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+        <div className="bg-destructive/10 border border-destructive text-destructive px-4 py-3 rounded" 
+             role="alert" aria-live="assertive">
           {error}
         </div>
       )}
       
       {!isLoading && !error && recommendations.length === 0 && (
-        <div className="bg-gray-100 p-4 rounded text-center">
+        <div className="bg-muted p-4 rounded text-center" aria-live="polite">
           No recommendations available.
         </div>
       )}
@@ -118,15 +126,16 @@ export const RecommendationCarousel: React.FC<RecommendationCarouselProps> = ({
         <div className="overflow-hidden" ref={emblaRef}>
           <div className={cn('flex', containerClassName)}>
             {recommendations.map((item) => (
-              <div 
+              <Card 
                 key={item.item_id}
                 className={cn(
-                  'flex-none w-48 mx-2 border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow',
+                  'flex-none w-56 mx-2 cursor-pointer hover:shadow-md transition-shadow',
                   cardClassName
                 )}
                 onClick={() => onItemClick && onItemClick(item)}
+                data-testid={`recommendation-item-${item.item_id}`}
               >
-                <div className="aspect-square bg-gray-100 overflow-hidden">
+                <div className="aspect-square bg-muted overflow-hidden">
                   {item.image_url ? (
                     <img 
                       src={item.image_url} 
@@ -134,21 +143,24 @@ export const RecommendationCarousel: React.FC<RecommendationCarouselProps> = ({
                       className="w-full h-full object-cover"
                     />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-gray-400">
-                      No Image
+                    <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                      <ImageIcon size={32} />
                     </div>
                   )}
                 </div>
-                <div className="p-3">
+                <CardContent className="p-4">
                   <h3 className="font-medium line-clamp-2">{item.title || item.item_id}</h3>
                   {item.price !== undefined && (
-                    <p className="mt-1 font-bold">${item.price.toFixed(2)}</p>
+                    <p className="mt-1 font-bold text-primary">${item.price.toFixed(2)}</p>
                   )}
                   {item.category && (
-                    <p className="mt-1 text-xs text-gray-500">{item.category}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{item.category}</p>
                   )}
-                </div>
-              </div>
+                  {item.brand && (
+                    <p className="text-xs text-muted-foreground">{item.brand}</p>
+                  )}
+                </CardContent>
+              </Card>
             ))}
           </div>
         </div>
@@ -156,20 +168,26 @@ export const RecommendationCarousel: React.FC<RecommendationCarouselProps> = ({
       
       {!isLoading && !error && recommendations.length > 0 && (
         <div className="flex justify-center mt-4 gap-2">
-          <button
+          <Button
             onClick={() => emblaApi?.scrollPrev()}
-            className="p-2 rounded-full bg-gray-200 hover:bg-gray-300"
+            variant="outline"
+            size="icon"
+            className="rounded-full"
             aria-label="Previous"
+            data-testid="carousel-prev-button"
           >
-            ←
-          </button>
-          <button
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Button
             onClick={() => emblaApi?.scrollNext()}
-            className="p-2 rounded-full bg-gray-200 hover:bg-gray-300"
+            variant="outline"
+            size="icon"
+            className="rounded-full"
             aria-label="Next"
+            data-testid="carousel-next-button"
           >
-            →
-          </button>
+            <ChevronRight className="h-4 w-4" />
+          </Button>
         </div>
       )}
     </div>

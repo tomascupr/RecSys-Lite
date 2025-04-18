@@ -1,6 +1,6 @@
 {
   "name": "recsys-lite-widget",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "React widget for RecSys-Lite recommendations",
   "main": "dist/recsys-lite-widget.umd.js",
   "module": "dist/recsys-lite-widget.es.js",
@@ -16,15 +16,20 @@
     "build-storybook": "storybook build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "test": "jest",
-    "prepublishOnly": "npm run build"
+    "test:coverage": "jest --coverage",
+    "prepublishOnly": "npm run lint && npm run test && npm run build",
+    "version": "npm version",
+    "release": "npm publish"
   },
   "peerDependencies": {
     "react": "^18.0.0",
     "react-dom": "^18.0.0"
   },
   "dependencies": {
-    "embla-carousel-react": "^8.0.0-rc11",
+    "class-variance-authority": "^0.7.1",
     "clsx": "^2.0.0",
+    "embla-carousel-react": "^8.0.0-rc11",
+    "lucide-react": "^0.294.0",
     "tailwind-merge": "^1.14.0"
   },
   "devDependencies": {

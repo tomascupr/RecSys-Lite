@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Meta, StoryObj } from '@storybook/react';
 import { RecommendationCarousel } from './RecommendationCarousel';
+import './lib/globals.css';
 
 // Mock data for stories
 const mockRecommendations = [
@@ -114,7 +115,7 @@ const ErrorDecorator = (Story: React.ComponentType) => {
   React.useEffect(() => {
     // Find error state element and simulate error after a short delay
     setTimeout(() => {
-      const component = document.querySelector('.w-full');
+      const component = document.querySelector('[data-testid="recommendation-carousel"]');
       if (component) {
         const loading = component.querySelector('.flex.justify-center.items-center');
         if (loading) {
@@ -122,8 +123,10 @@ const ErrorDecorator = (Story: React.ComponentType) => {
         }
         
         const errorDiv = document.createElement('div');
-        errorDiv.className = 'bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded';
-        errorDiv.textContent = 'Error: User not found';
+        errorDiv.className = 'bg-destructive/10 border border-destructive text-destructive px-4 py-3 rounded';
+        errorDiv.setAttribute('role', 'alert');
+        errorDiv.setAttribute('aria-live', 'assertive');
+        errorDiv.textContent = 'Error fetching recommendations: User not found';
         
         // Insert after the title
         const title = component.querySelector('h2');

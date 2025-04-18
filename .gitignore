@@ -39,10 +39,12 @@ ENV/
 *.sqlite3
 
 # Model artifacts
-model_artifacts/
+model_artifacts/*
+!model_artifacts/.gitkeep
 
 # Logs
-logs/
+logs/*
+!logs/.gitkeep
 *.log
 
 # Jupyter notebooks
@@ -79,6 +81,10 @@ coverage/
 
 # Build output
 dist/
+
+# Artifacts
+artifacts/*
+!artifacts/.gitkeep
 
 # Parquet and generated data
 # Uncomment if you don't want to include sample data

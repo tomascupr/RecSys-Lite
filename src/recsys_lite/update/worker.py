@@ -12,7 +12,7 @@ import scipy.sparse as sp
 
 class UpdateWorker:
     """Worker for incremental model updates."""
-    
+
     def __init__(
         self,
         db_path: Path,
@@ -23,7 +23,7 @@ class UpdateWorker:
         interval: int = 60,
     ) -> None:
         """Initialize update worker.
-        
+
         Args:
             db_path: Path to DuckDB database
             model: Recommendation model with partial_fit_users method
@@ -39,37 +39,37 @@ class UpdateWorker:
         self.batch_size = batch_size
         self.interval = interval
         self.last_timestamp = 0
-    
+
     def run(self) -> None:
         """Run the update worker loop."""
         while True:
             try:
                 # Get new events
                 user_item_matrix, user_ids, new_items = self._get_new_events()
-                
+
                 if user_ids.size > 0:
                     # Update user factors
                     self._update_user_factors(user_item_matrix, user_ids)
-                
+
                 if new_items:
                     # Update item factors and index
                     self._update_item_vectors(new_items)
-                
+
                 # Sleep until next update
                 time.sleep(self.interval)
-            
+
             except Exception as e:
                 print(f"Error in update worker: {e}")
                 time.sleep(self.interval)
-    
+
     def _get_new_events(self) -> tuple:
         """Get new events from the database and incremental parquet files.
-        
+
         Returns:
             Tuple of user-item matrix, user IDs, and new items
         """
         conn = duckdb.connect(str(self.db_path))
-        
+
         # Get events since last timestamp from database
         events_df = conn.execute(
             f"""
@@ -80,7 +80,7 @@ class UpdateWorker:
             LIMIT {self.batch_size}
             """
         ).fetchdf()
-        
+
         # Also check for new incremental parquet files in data/incremental directory
         incremental_dir = Path(self.db_path).parent / "incremental"
         if incremental_dir.exists():
@@ -99,83 +99,80 @@ class UpdateWorker:
                             LIMIT {self.batch_size}
                             """
                         ).fetchdf()
-                        
+
                         if not new_events.empty:
                             # Append to existing events
                             events_df = events_df.append(new_events)
                     except Exception as e:
                         print(f"Error reading incremental parquet file {parquet_file}: {e}")
-        
+
         # Update last timestamp
         if not events_df.empty:
             self.last_timestamp = events_df["ts"].max()
-        
+
         conn.close()
-        
+
         if events_df.empty:
             return sp.csr_matrix((0, 0)), np.array([]), []
-        
+
         # Extract unique users and items
         unique_users = set(events_df["user_id"])
         unique_items = set(events_df["item_id"])
-        
+
         # Get existing items in our model to identify new items
         existing_items = set(self.item_id_map.values())
         new_items = list(unique_items - existing_items)
-        
+
         # Create user and item ID mappings for the sparse matrix
         # This is a simple mapping for the incremental update
         user_mapping = {user_id: i for i, user_id in enumerate(unique_users)}
         item_mapping = {item_id: i for i, item_id in enumerate(unique_items)}
-        
+
         # Create sparse user-item matrix
         n_users = len(user_mapping)
         n_items = len(item_mapping)
-        
+
         # Prepare data for sparse matrix
         row_indices = [user_mapping[user] for user in events_df["user_id"]]
         col_indices = [item_mapping[item] for item in events_df["item_id"]]
         data = events_df["qty"].values
-        
+
         # Create sparse matrix
         user_item_matrix = sp.csr_matrix(
-            (data, (row_indices, col_indices)),
-            shape=(n_users, n_items)
+            (data, (row_indices, col_indices)), shape=(n_users, n_items)
         )
-        
+
         # Extract user IDs as numpy array (for partial_fit_users)
         user_ids = np.array(list(user_mapping.keys()))
-        
+
         return user_item_matrix, user_ids, new_items
-    
-    def _update_user_factors(
-        self, user_item_matrix: sp.csr_matrix, user_ids: np.ndarray
-    ) -> None:
+
+    def _update_user_factors(self, user_item_matrix: sp.csr_matrix, user_ids: np.ndarray) -> None:
         """Update user factors for new events.
-        
+
         Args:
             user_item_matrix: Sparse user-item interaction matrix
             user_ids: IDs of users to update
         """
         self.model.partial_fit_users(user_item_matrix, user_ids)
-    
+
     def _update_item_vectors(self, new_items: List[str]) -> None:
         """Update item vectors and Faiss index.
-        
+
         Args:
             new_items: List of new item IDs
         """
         if not new_items:
             return
-            
+
         print(f"Updating item vectors for {len(new_items)} new items")
-        
+
         try:
             # Different models use different methods to get item vectors
-            if hasattr(self.model, 'get_item_vectors_matrix'):
+            if hasattr(self.model, "get_item_vectors_matrix"):
                 # For Item2Vec model
                 item_vectors = self.model.get_item_vectors_matrix(new_items)
-            elif hasattr(self.model, 'get_item_factors'):
+            elif hasattr(self.model, "get_item_factors"):
                 # For ALS, BPR models
                 item_vectors = self.model.get_item_factors()
                 # Need to filter to just the new items - this requires model-specific implementation
@@ -183,16 +180,16 @@ class UpdateWorker:
             else:
                 print("Warning: Model does not provide a method to get item vectors")
                 return
-            
+
             # Add to Faiss index
             if item_vectors.shape[0] > 0:
                 self.faiss_index.add(item_vectors)
-                
+
                 # Update item ID map
                 start_idx = len(self.item_id_map)
                 for i, item_id in enumerate(new_items):
                     self.item_id_map[start_idx + i] = item_id
-                
+
                 print(f"Successfully added {len(new_items)} new items to the Faiss index")
             else:
                 print("No item vectors available to add")

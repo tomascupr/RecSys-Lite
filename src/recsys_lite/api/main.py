@@ -154,9 +154,7 @@ def create_app(model_dir: Union[str, Path] = "model_artifacts/als") -> FastAPI:
             "request_count": request_count,
             "recommendation_count": recommendation_count,
             "error_count": error_count,
-            "recommendations_per_second": round(
-                recommendation_count / max(uptime, 1), 2
-            ),
+            "recommendations_per_second": round(recommendation_count / max(uptime, 1), 2),
             "model_type": model_type,
             "model_info": {
                 "users": len(user_mapping) if user_mapping else 0,
@@ -188,9 +186,7 @@ def create_app(model_dir: Union[str, Path] = "model_artifacts/als") -> FastAPI:
         request_count += 1
 
         if not model or not faiss_index:
-            raise HTTPException(
-                status_code=503, detail="Recommender system not initialized"
-            )
+            raise HTTPException(status_code=503, detail="Recommender system not initialized")
 
         if user_id not in user_mapping:
             raise HTTPException(status_code=404, detail=f"User {user_id} not found")
@@ -208,38 +204,21 @@ def create_app(model_dir: Union[str, Path] = "model_artifacts/als") -> FastAPI:
 
                 if model_type == "als" or model_type == "bpr":
                     # For matrix factorization models, get the user vector from user factors
-                    if (
-                        hasattr(model, "user_factors")
-                        and model.user_factors is not None
-                    ):
-                        user_vector = (
-                            model.user_factors[user_idx]
-                            .reshape(1, -1)
-                            .astype(np.float32)
-                        )
+                    if hasattr(model, "user_factors") and model.user_factors is not None:
+                        user_vector = model.user_factors[user_idx].reshape(1, -1).astype(np.float32)
                 elif model_type == "lightfm":
                     # For LightFM, get user representation
                     if hasattr(model, "get_user_representations"):
                         _, user_vector = model.get_user_representations()
-                        user_vector = (
-                            user_vector[user_idx].reshape(1, -1).astype(np.float32)
-                        )
+                        user_vector = user_vector[user_idx].reshape(1, -1).astype(np.float32)
                 elif model_type == "gru4rec":
                     # For GRU4Rec we'd typically need session data, not just a user ID
                     # As a fallback, we'll use a random vector
-                    user_vector = (
-                        np.random.random(faiss_index.d)
-                        .astype(np.float32)
-                        .reshape(1, -1)
-                    )
+                    user_vector = np.random.random(faiss_index.d).astype(np.float32).reshape(1, -1)
 
                 if user_vector is None:
                     # Fallback if we couldn't get a proper user vector
-                    user_vector = (
-                        np.random.random(faiss_index.d)
-                        .astype(np.float32)
-                        .reshape(1, -1)
-                    )
+                    user_vector = np.random.random(faiss_index.d).astype(np.float32).reshape(1, -1)
 
                 # Search for similar items using Faiss
                 distances, indices = faiss_index.search(user_vector, k)
@@ -339,9 +318,7 @@ def create_app(model_dir: Union[str, Path] = "model_artifacts/als") -> FastAPI:
         request_count += 1
 
         if not faiss_index:
-            raise HTTPException(
-                status_code=503, detail="Recommender system not initialized"
-            )
+            raise HTTPException(status_code=503, detail="Recommender system not initialized")
 
         if item_id not in item_mapping:
             raise HTTPException(status_code=404, detail=f"Item {item_id} not found")
@@ -354,26 +331,18 @@ def create_app(model_dir: Union[str, Path] = "model_artifacts/als") -> FastAPI:
             if model_type == "als" or model_type == "bpr":
                 # For matrix factorization models, get the item vector from item factors
                 if hasattr(model, "item_factors") and model.item_factors is not None:
-                    item_vector = (
-                        model.item_factors[item_idx].reshape(1, -1).astype(np.float32)
-                    )
+                    item_vector = model.item_factors[item_idx].reshape(1, -1).astype(np.float32)
             elif model_type == "lightfm":
                 # For LightFM, get item representation
                 if hasattr(model, "get_item_representations"):
                     _, item_vector = model.get_item_representations()
-                    item_vector = (
-                        item_vector[item_idx].reshape(1, -1).astype(np.float32)
-                    )
+                    item_vector = item_vector[item_idx].reshape(1, -1).astype(np.float32)
             elif model_type == "item2vec":
                 # For Item2Vec, get the item embedding
-                if hasattr(model, "get_item_vectors") and hasattr(
-                    model, "item_vectors"
-                ):
+                if hasattr(model, "get_item_vectors") and hasattr(model, "item_vectors"):
                     if model.item_vectors and item_id in model.item_vectors:
                         item_vector = (
-                            np.array(model.item_vectors[item_id])
-                            .reshape(1, -1)
-                            .astype(np.float32)
+                            np.array(model.item_vectors[item_id]).reshape(1, -1).astype(np.float32)
                         )
 
             if item_vector is None:

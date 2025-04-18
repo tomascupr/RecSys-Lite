@@ -14,7 +14,7 @@ def ingest_data(events_path: Path, items_path: Path, db_path: Path) -> None:
         db_path: Path to DuckDB database
     """
     conn = duckdb.connect(str(db_path))
-    
+
     # Create events table
     conn.execute(
         f"""
@@ -22,7 +22,7 @@ def ingest_data(events_path: Path, items_path: Path, db_path: Path) -> None:
         SELECT * FROM read_parquet('{events_path}')
         """
     )
-    
+
     # Create items table
     conn.execute(
         f"""
@@ -30,5 +30,5 @@ def ingest_data(events_path: Path, items_path: Path, db_path: Path) -> None:
         SELECT * FROM read_csv('{items_path}')
         """
     )
-    
+
     conn.close()

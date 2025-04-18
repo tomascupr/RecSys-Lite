@@ -10,8 +10,8 @@ from recsys_lite.models.item2vec import Item2VecModel
 # Use mock implementations in CI environment where building real dependencies fails
 if os.environ.get("CI") == "true":
     # In CI environment, use mock implementations
-    from recsys_lite.models.lightfm_mock import LightFMModel
     from recsys_lite.models.gru4rec_mock import GRU4Rec
+    from recsys_lite.models.lightfm_mock import LightFMModel
 else:
     # In normal environments, use real implementations
     try:
@@ -19,7 +19,7 @@ else:
     except ImportError:
         # Fallback to mock if lightfm isn't available
         from recsys_lite.models.lightfm_mock import LightFMModel
-    
+
     try:
         from recsys_lite.models.gru4rec import GRU4Rec
     except ImportError:

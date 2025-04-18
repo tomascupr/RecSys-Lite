@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 
 from recsys_lite.indexing import FaissIndexBuilder
+from recsys_lite.api.services import RecommendationService
 
 
 class Recommendation(BaseModel):
@@ -48,7 +49,7 @@ def create_app(model_dir: Union[str, Path] = "model_artifacts/als") -> FastAPI:
         version="0.1.0",
     )
 
-    # Global variables
+    # Global variables / service container
     user_mapping = {}
     item_mapping = {}
     reverse_user_mapping = {}
@@ -58,11 +59,13 @@ def create_app(model_dir: Union[str, Path] = "model_artifacts/als") -> FastAPI:
     model = None
     model_type = None
     user_item_matrix = None
+    # Recommendation service (initialized on startup)
+    rec_service = None
 
     @app.on_event("startup")
     async def startup_event() -> None:
         """Load model artifacts on startup."""
-        nonlocal user_mapping, item_mapping, reverse_user_mapping, reverse_item_mapping
+        nonlocal user_mapping, item_mapping, reverse_user_mapping, reverse_item_mapping, rec_service
         nonlocal faiss_index, item_data, model, model_type, user_item_matrix
 
         # Load user and item mappings
@@ -132,6 +135,16 @@ def create_app(model_dir: Union[str, Path] = "model_artifacts/als") -> FastAPI:
 
             user_item_matrix = sp.csr_matrix((len(user_mapping), len(item_mapping)))
 
+            # Initialize recommendation service
+            rec_service = RecommendationService(
+                model=model,
+                faiss_index=faiss_index,
+                model_type=model_type,
+                user_mapping=user_mapping,
+                item_mapping=item_mapping,
+                reverse_item_mapping=reverse_item_mapping,
+                user_item_matrix=user_item_matrix,
+            )
             print(f"API initialized with model type: {model_type}")
         except Exception as e:
             print(f"Error loading model artifacts: {e}")
@@ -175,136 +188,45 @@ def create_app(model_dir: Union[str, Path] = "model_artifacts/als") -> FastAPI:
             description="Whether to use Faiss index or direct model recommendations",
         ),
     ) -> RecommendationResponse:
-        """Get recommendations for a user.
-
-        Args:
-            user_id: User ID to get recommendations for
-            k: Number of recommendations to return
-            use_faiss: Whether to use Faiss index (faster) or direct model predictions
-
-        Returns:
-            Recommendation response
-        """
-        # Update metrics
-        nonlocal request_count
+        """Get recommendations for a user."""
+        # Update request count
+        nonlocal request_count, recommendation_count, error_count
         request_count += 1
 
-        # If we have no Faiss index we cannot serve recommendations.  A missing
-        # *model* is tolerated – we fall back to a random user vector in that
-        # case (unit‑tests purposefully omit the heavy model artefacts).
-
-        if not faiss_index:
+        # Ensure service is initialized
+        if rec_service is None:
             raise HTTPException(status_code=503, detail="Recommender system not initialized")
 
-        if user_id not in user_mapping:
-            raise HTTPException(status_code=404, detail=f"User {user_id} not found")
-
-        # Get user index
-        user_idx = int(user_mapping[user_id])
-
         try:
-            # Generate recommendations based on method
-            if use_faiss:
-                # For Faiss-based recommendation
-
-                # Get user vector based on model type
-                user_vector = None
-
-                if model_type == "als" or model_type == "bpr":
-                    # For matrix factorization models, get the user vector from user factors
-                    if hasattr(model, "user_factors") and model.user_factors is not None:
-                        user_vector = model.user_factors[user_idx].reshape(1, -1).astype(np.float32)
-                elif model_type == "lightfm":
-                    # For LightFM, get user representation
-                    if hasattr(model, "get_user_representations"):
-                        _, user_vector = model.get_user_representations()
-                        user_vector = user_vector[user_idx].reshape(1, -1).astype(np.float32)
-                elif model_type == "gru4rec":
-                    # For GRU4Rec we'd typically need session data, not just a user ID
-                    # As a fallback, we'll use a random vector
-                    user_vector = np.random.random(faiss_index.d).astype(np.float32).reshape(1, -1)
-
-                if user_vector is None:
-                    # Fallback if we couldn't get a proper user vector
-                    user_vector = np.random.random(faiss_index.d).astype(np.float32).reshape(1, -1)
-
-                # Search for similar items using Faiss
-                distances, indices = faiss_index.search(user_vector, k)
-
-                # Process results
-                item_ids = []
-                scores = []
-
-                for idx, score in zip(indices[0], distances[0], strict=True):
-                    if idx == -1:  # Faiss returns -1 for no results
-                        continue
-
-                    # Get item ID from index using reverse mapping
-                    item_id = reverse_item_mapping.get(int(idx), f"unknown_{idx}")
-                    item_ids.append(item_id)
-                    scores.append(float(score))
-            else:
-                # Direct model recommendations - more accurate but potentially slower
-                # Each model implements the recommend method as part of BaseRecommender interface
-                import scipy.sparse as sp
-
-                # Create a sparse matrix for this user if needed
-                if user_item_matrix is None:
-                    # Fallback empty matrix
-                    user_items = sp.csr_matrix((1, len(item_mapping)))
-                else:
-                    if user_idx < user_item_matrix.shape[0]:
-                        user_items = user_item_matrix[user_idx].reshape(1, -1)
-                    else:
-                        user_items = sp.csr_matrix((1, user_item_matrix.shape[1]))
-
-                # Get recommendations directly from model
-                item_indices, scores = model.recommend(
-                    user_id=user_idx, user_items=user_items, n_items=k
-                )
-
-                # Convert item indices to item IDs
-                item_ids = []
-                for idx in item_indices:
-                    item_id = reverse_item_mapping.get(int(idx), f"unknown_{idx}")
-                    item_ids.append(item_id)
-
-            # Create recommendation objects
-            recommendations = []
-            for item_id, score in zip(item_ids, scores, strict=True):
-                # Get item data if available
-                item_info = {}
-                if item_id in item_data:
-                    item_info = item_data[item_id]
-
-                # Create recommendation
-                rec = Recommendation(
-                    item_id=item_id,
-                    score=float(score),
-                    title=item_info.get("title"),
-                    category=item_info.get("category"),
-                    brand=item_info.get("brand"),
-                    price=item_info.get("price"),
-                    img_url=item_info.get("img_url"),
-                )
-                recommendations.append(rec)
-
-            # Update metrics
-            nonlocal recommendation_count
-            recommendation_count += len(recommendations)
-
-            return RecommendationResponse(
-                user_id=user_id,
-                recommendations=recommendations,
+            # Delegate to service layer
+            item_ids, scores, item_meta = rec_service.recommend_for_user(
+                user_id=user_id, k=k, use_faiss=use_faiss, item_data=item_data
             )
+            # Build Pydantic response objects
+            recommendations = [
+                Recommendation(
+                    item_id=i,
+                    score=float(s),
+                    title=m.get("title"),
+                    category=m.get("category"),
+                    brand=m.get("brand"),
+                    price=m.get("price"),
+                    img_url=m.get("img_url"),
+                )
+                for i, s, m in zip(item_ids, scores, item_meta)
+            ]
+            recommendation_count += len(recommendations)
+            return RecommendationResponse(user_id=user_id, recommendations=recommendations)
+        except HTTPException:
+            # Propagate known HTTP errors
+            raise
         except Exception as e:
-            # Update error metrics
-            nonlocal error_count
+            # Record and wrap unexpected errors
             error_count += 1
-
             print(f"Error generating recommendations: {e}")
             raise HTTPException(
-                status_code=500, detail=f"Error generating recommendations: {str(e)}"
+                status_code=500,
+                detail=f"Error generating recommendations: {str(e)}",
             ) from e
 
     @app.get("/similar-items")
@@ -312,110 +234,45 @@ def create_app(model_dir: Union[str, Path] = "model_artifacts/als") -> FastAPI:
         item_id: str = Query(..., description="Item ID to find similar items for"),
         k: int = Query(10, description="Number of similar items to return"),
     ) -> List[Recommendation]:
-        """Get similar items.
-
-        Args:
-            item_id: Item ID to find similar items for
-            k: Number of similar items to return
-
-        Returns:
-            List of similar items
-        """
-        # Update metrics
-        nonlocal request_count
+        """Get similar items."""
+        # Update request count
+        nonlocal request_count, recommendation_count, error_count
         request_count += 1
 
-        if not faiss_index:
+        # Ensure service is initialized
+        if rec_service is None:
             raise HTTPException(status_code=503, detail="Recommender system not initialized")
 
-        if item_id not in item_mapping:
-            raise HTTPException(status_code=404, detail=f"Item {item_id} not found")
-
         try:
-            # Get item vector based on model type
-            item_vector = None
-            item_idx = int(item_mapping[item_id])
-
-            if model_type == "als" or model_type == "bpr":
-                # For matrix factorization models, get the item vector from item factors
-                if hasattr(model, "item_factors") and model.item_factors is not None:
-                    item_vector = model.item_factors[item_idx].reshape(1, -1).astype(np.float32)
-            elif model_type == "lightfm":
-                # For LightFM, get item representation
-                if hasattr(model, "get_item_representations"):
-                    _, item_vector = model.get_item_representations()
-                    item_vector = item_vector[item_idx].reshape(1, -1).astype(np.float32)
-            elif model_type == "item2vec":
-                # For Item2Vec, get the item embedding
-                if hasattr(model, "get_item_vectors") and hasattr(model, "item_vectors"):
-                    if model.item_vectors and item_id in model.item_vectors:
-                        item_vector = (
-                            np.array(model.item_vectors[item_id]).reshape(1, -1).astype(np.float32)
-                        )
-
-            if item_vector is None:
-                # Fallback if we couldn't get a proper item vector
-                item_vector = np.zeros((1, faiss_index.d), dtype=np.float32)
-                # For demonstration, use a random vector with a high value for the item's own index
-                # This will produce more meaningful results than an all-zeros vector
-                item_vector = np.random.random((1, faiss_index.d)).astype(np.float32)
-
-            # Search for similar items
-            distances, indices = faiss_index.search(
-                item_vector, k + 1
-            )  # +1 because the item itself will be included
-
-            # Create recommendations (try to skip the query item itself)
-            recommendations = []
-            seen_item_ids = set()  # Track items we've already included
-
-            for score, idx in zip(distances[0], indices[0], strict=True):
-                if idx == -1:  # Faiss returns -1 for no results
-                    continue
-
-                # Get item ID from index
-                similar_item_id = reverse_item_mapping.get(int(idx), f"unknown_{idx}")
-
-                # Skip the query item and avoid duplicates
-                if similar_item_id == item_id or similar_item_id in seen_item_ids:
-                    continue
-
-                seen_item_ids.add(similar_item_id)
-
-                # Get item data if available
-                item_info = {}
-                if similar_item_id in item_data:
-                    item_info = item_data[similar_item_id]
-
-                # Create recommendation
-                rec = Recommendation(
-                    item_id=similar_item_id,
-                    score=float(score),
-                    title=item_info.get("title"),
-                    category=item_info.get("category"),
-                    brand=item_info.get("brand"),
-                    price=item_info.get("price"),
-                    img_url=item_info.get("img_url"),
+            # Delegate to service layer
+            item_ids, scores, item_meta = rec_service.find_similar_items(
+                item_id=item_id, k=k, item_data=item_data
+            )
+            # Build Pydantic response objects
+            recommendations = [
+                Recommendation(
+                    item_id=i,
+                    score=float(s),
+                    title=m.get("title"),
+                    category=m.get("category"),
+                    brand=m.get("brand"),
+                    price=m.get("price"),
+                    img_url=m.get("img_url"),
                 )
-                recommendations.append(rec)
-
-                # Stop once we have enough recommendations
-                if len(recommendations) >= k:
-                    break
-
-            # Update metrics
-            nonlocal recommendation_count
+                for i, s, m in zip(item_ids, scores, item_meta)
+            ]
             recommendation_count += len(recommendations)
-
             return recommendations
+        except HTTPException:
+            # Propagate known HTTP errors
+            raise
         except Exception as e:
-            # Update error metrics
-            nonlocal error_count
+            # Record and wrap unexpected errors
             error_count += 1
-
             print(f"Error finding similar items: {e}")
             raise HTTPException(
-                status_code=500, detail=f"Error finding similar items: {str(e)}"
+                status_code=500,
+                detail=f"Error finding similar items: {str(e)}",
             ) from e
 
     return app

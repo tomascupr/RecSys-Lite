@@ -1,13 +1,13 @@
 """GRU4Rec session-based recommendation model using PyTorch."""
 
-from typing import Dict, Any, Tuple, Optional, List, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
+import scipy.sparse as sp
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
-import scipy.sparse as sp
 
 from recsys_lite.models.base import BaseRecommender
 
@@ -210,7 +210,7 @@ class GRU4Rec(BaseRecommender):
         )
         
         # Training loop
-        metrics = {"loss": []}
+        metrics: Dict[str, List[float]] = {"loss": []}
         
         for epoch in range(self.n_epochs):
             epoch_loss = 0

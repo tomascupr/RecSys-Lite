@@ -1,8 +1,8 @@
 """ALS model implementation using implicit library."""
 
-from typing import Dict, Any, List, Tuple, Union
 import os
 import pickle
+from typing import Any, Tuple, Union
 
 import implicit
 import numpy as np
@@ -103,6 +103,8 @@ class ALSModel(BaseRecommender):
         Returns:
             Item factors matrix
         """
+        if self.item_factors is None:
+            return np.array([])  # Return empty array if not initialized
         return self.item_factors
         
     def save_model(self, path: str) -> None:

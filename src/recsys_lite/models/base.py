@@ -1,7 +1,7 @@
 """Base model class for RecSys-Lite."""
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Tuple, Union
 
 import numpy as np
 import scipy.sparse as sp

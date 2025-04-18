@@ -1,13 +1,17 @@
 """LightFM model implementation for hybrid matrix factorization."""
 
-from typing import Dict, Any, Tuple, Optional, List
+import os
+import pickle
+from typing import Any, Optional, Tuple, Union
 
 import numpy as np
 import scipy.sparse as sp
 from lightfm import LightFM
 
+from recsys_lite.models.base import BaseRecommender
 
-class LightFMModel:
+
+class LightFMModel(BaseRecommender):
     """Hybrid matrix factorization model using LightFM."""
     
     def __init__(
@@ -44,22 +48,26 @@ class LightFMModel:
         self.item_biases = None
         self.user_embeddings = None
         self.item_embeddings = None
+        self.user_features = None
+        self.item_features = None
     
-    def fit(
-        self,
-        interactions: sp.csr_matrix,
-        user_features: Optional[sp.csr_matrix] = None,
-        item_features: Optional[sp.csr_matrix] = None,
-    ) -> None:
+    def fit(self, user_item_matrix: sp.csr_matrix, **kwargs: Any) -> None:
         """Fit the LightFM model.
         
         Args:
-            interactions: Sparse user-item interaction matrix
-            user_features: Sparse user features matrix
-            item_features: Sparse item features matrix
+            user_item_matrix: Sparse user-item interaction matrix
+            **kwargs: Additional model-specific parameters
         """
+        # Get optional feature matrices from kwargs
+        user_features = kwargs.get("user_features", None)
+        item_features = kwargs.get("item_features", None)
+        
+        # Store features for later use
+        self.user_features = user_features
+        self.item_features = item_features
+        
         self.model.fit(
-            interactions=interactions,
+            interactions=user_item_matrix,
             user_features=user_features,
             item_features=item_features,
             epochs=self.epochs,
@@ -90,12 +98,80 @@ class LightFMModel:
         Returns:
             Array of prediction scores
         """
-        return self.model.predict(
+        result = self.model.predict(
             user_ids=user_ids,
             item_ids=item_ids,
             user_features=user_features,
             item_features=item_features,
         )
+        # Ensure result is a numpy array to satisfy type checker
+        return np.asarray(result)
+    
+    def recommend(
+        self, 
+        user_id: Union[int, str], 
+        user_items: sp.csr_matrix, 
+        n_items: int = 10, 
+        **kwargs: Any
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """Generate recommendations for a user.
+        
+        Args:
+            user_id: User ID
+            user_items: Sparse user-item interaction matrix
+            n_items: Number of recommendations to return
+            **kwargs: Additional model-specific parameters
+            
+        Returns:
+            Tuple of (item_ids, scores)
+        """
+        # Convert string user_id to int if needed
+        if isinstance(user_id, str):
+            user_id = int(user_id)
+        
+        # Get user and item features from kwargs or use stored ones
+        user_features = kwargs.get("user_features", self.user_features)
+        item_features = kwargs.get("item_features", self.item_features)
+        
+        # Get filter_items from kwargs or create from user_items
+        filter_items = kwargs.get("filter_items", None)
+        if filter_items is None and user_items is not None:
+            # Get indices of items the user has already interacted with
+            if user_id < user_items.shape[0]:
+                filter_items = user_items[user_id].indices
+        
+        # Get number of items
+        if self.item_embeddings is None:
+            raise ValueError("Model has not been trained, item_embeddings is None")
+        n_items_total = self.item_embeddings.shape[0]
+        
+        # Get predictions for all items
+        scores = self.predict(
+            user_ids=np.array([user_id] * n_items_total),
+            item_ids=np.arange(n_items_total),
+            user_features=user_features,
+            item_features=item_features,
+        )
+        
+        # Filter items if needed
+        if filter_items is not None:
+            scores[filter_items] = -np.inf
+            
+        # Get top N items
+        top_items = np.argsort(-scores)[:n_items]
+        top_scores = scores[top_items]
+        
+        return top_items, top_scores
+    
+    def get_item_factors(self) -> np.ndarray:
+        """Get item factors matrix.
+        
+        Returns:
+            Item factors matrix
+        """
+        if self.model.item_embeddings is None:
+            return np.array([])  # Return empty array if not initialized
+        return np.asarray(self.model.item_embeddings)
     
     def get_item_representations(
         self, item_features: Optional[sp.csr_matrix] = None
@@ -133,41 +209,81 @@ class LightFMModel:
             )
         return self.model.user_biases, self.model.user_embeddings
     
-    def recommend_for_user(
-        self,
-        user_id: int,
-        user_features: Optional[sp.csr_matrix] = None,
-        item_features: Optional[sp.csr_matrix] = None,
-        n_items: int = 10,
-        filter_items: Optional[List[int]] = None,
-    ) -> Tuple[np.ndarray, np.ndarray]:
-        """Recommend items for a user.
+    def save_model(self, path: str) -> None:
+        """Save model to disk.
         
         Args:
-            user_id: User ID
-            user_features: Sparse user features matrix
-            item_features: Sparse item features matrix
-            n_items: Number of recommendations to return
-            filter_items: List of item IDs to exclude from recommendations
-            
-        Returns:
-            Tuple of (item_ids, scores)
+            path: Path to save model
         """
-        # Get all item scores for the user
-        n_items_total = self.item_embeddings.shape[0]
-        scores = self.predict(
-            user_ids=np.array([user_id] * n_items_total),
-            item_ids=np.arange(n_items_total),
-            user_features=user_features,
-            item_features=item_features,
+        os.makedirs(path, exist_ok=True)
+        
+        # Save model parameters
+        model_state = {
+            "no_components": self.model.no_components,
+            "learning_rate": self.model.learning_rate,
+            "loss": self.model.loss,
+            "item_alpha": self.model.item_alpha,
+            "user_alpha": self.model.user_alpha,
+            "epochs": self.epochs,
+            "user_biases": self.user_biases,
+            "item_biases": self.item_biases,
+            "user_embeddings": self.user_embeddings,
+            "item_embeddings": self.item_embeddings,
+        }
+        
+        with open(os.path.join(path, "lightfm_model.pkl"), "wb") as f:
+            pickle.dump(model_state, f)
+        
+        # Save features if available
+        if self.user_features is not None:
+            with open(os.path.join(path, "user_features.pkl"), "wb") as f:
+                pickle.dump(self.user_features, f)
+                
+        if self.item_features is not None:
+            with open(os.path.join(path, "item_features.pkl"), "wb") as f:
+                pickle.dump(self.item_features, f)
+    
+    def load_model(self, path: str) -> None:
+        """Load model from disk.
+        
+        Args:
+            path: Path to load model from
+        """
+        # Load model parameters
+        with open(os.path.join(path, "lightfm_model.pkl"), "rb") as f:
+            model_state = pickle.load(f)
+        
+        # Create a new model with the saved parameters
+        self.model = LightFM(
+            no_components=model_state["no_components"],
+            learning_rate=model_state["learning_rate"],
+            loss=model_state["loss"],
+            item_alpha=model_state["item_alpha"],
+            user_alpha=model_state["user_alpha"],
         )
         
-        # Filter items if needed
-        if filter_items:
-            scores[filter_items] = -np.inf
-            
-        # Get top N items
-        top_items = np.argsort(-scores)[:n_items]
-        top_scores = scores[top_items]
+        # Set model attributes
+        self.epochs = model_state["epochs"]
+        self.user_biases = model_state["user_biases"]
+        self.item_biases = model_state["item_biases"]
+        self.user_embeddings = model_state["user_embeddings"]
+        self.item_embeddings = model_state["item_embeddings"]
         
-        return top_items, top_scores
+        # Set model state
+        self.model.user_biases = self.user_biases
+        self.model.item_biases = self.item_biases
+        self.model.user_embeddings = self.user_embeddings
+        self.model.item_embeddings = self.item_embeddings
+        
+        # Load features if available
+        try:
+            with open(os.path.join(path, "user_features.pkl"), "rb") as f:
+                self.user_features = pickle.load(f)
+        except FileNotFoundError:
+            self.user_features = None
+            
+        try:
+            with open(os.path.join(path, "item_features.pkl"), "rb") as f:
+                self.item_features = pickle.load(f)
+        except FileNotFoundError:
+            self.item_features = None

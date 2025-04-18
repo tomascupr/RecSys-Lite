@@ -16,7 +16,7 @@ sys.path.insert(0, str(src_path))
 try:
     from src.recsys_lite.indexing.faiss_index import FaissIndexBuilder
     from src.recsys_lite.models.als import ALSModel
-    from src.recsys_lite.models.base import BaseRecommender
+    # (import removed – unused)
     from src.recsys_lite.update.worker import UpdateWorker
 
     print("Successfully imported project modules")

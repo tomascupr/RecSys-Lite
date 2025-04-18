@@ -46,6 +46,8 @@ class MockFaissIndex:
         return True
 
 
+import time  # moved to top to satisfy Ruff E402
+
 # Import the UpdateWorker class we want to test
 from recsys_lite.update.worker import UpdateWorker
 

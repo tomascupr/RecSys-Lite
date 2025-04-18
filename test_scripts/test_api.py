@@ -17,7 +17,7 @@ try:
     from src.recsys_lite.api.main import create_app
     from src.recsys_lite.indexing.faiss_index import FaissIndexBuilder
     from src.recsys_lite.models.als import ALSModel
-    from src.recsys_lite.models.base import BaseRecommender
+    # (import removed – unused)
 
     print("Successfully imported project modules")
 except ImportError as e:

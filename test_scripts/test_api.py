@@ -4,14 +4,17 @@ import json
 import sys
 from pathlib import Path
 
+# Data and test client imports
 import numpy as np
 import scipy.sparse as sp
+import shutil
 from fastapi.testclient import TestClient
 
 # Set the path to the source directory
 src_path = Path(__file__).parent.parent
 print(f"Adding {src_path} to Python path")
 sys.path.insert(0, str(src_path))
+
 
 try:
     from src.recsys_lite.api.main import create_app
@@ -31,7 +34,11 @@ except ImportError as e:
     print("Successfully imported modules with alternative path")
 
 # Create a temporary directory for testing
+from recsys_lite.api.dependencies import get_api_state
+from recsys_lite.api.loaders import setup_recommendation_service
 test_dir = Path("test_data")
+# Clear any previous model artifacts
+shutil.rmtree(test_dir / "model_artifacts", ignore_errors=True)
 test_dir.mkdir(exist_ok=True)
 
 # Prepare model artifacts directory
@@ -73,7 +80,7 @@ model.fit(user_item_matrix)
 print("Model trained")
 
 # Save model
-model.save_model(str(model_dir / "als_model.pkl"))
+model.save_model(str(model_dir))
 
 # Create and save a Faiss index
 print("Creating Faiss index...")
@@ -102,30 +109,37 @@ with open(test_dir / "data" / "items.json", "w") as f:
 # Test the API
 print("\nTesting API...")
 app = create_app(model_dir=model_dir)
-client = TestClient(app)
+# Manually initialize recommendation service (bypass FastAPI startup)
+state = get_api_state()
+service = setup_recommendation_service(model_dir)
+state.recommendation_service = service
+state.model_type = service.model_type
+state.user_mapping = service.user_mapping
+state.item_mapping = service.item_mapping
+with TestClient(app) as client:
 
-# Test health endpoint
-print("Testing /health endpoint...")
-response = client.get("/health")
-print(f"Status code: {response.status_code}")
-print(f"Response: {response.json()}")
+    # Test health endpoint
+    print("Testing /health endpoint...")
+    response = client.get("/health")
+    print(f"Status code: {response.status_code}")
+    print(f"Response: {response.json()}")
 
-# Test metrics endpoint
-print("\nTesting /metrics endpoint...")
-response = client.get("/metrics")
-print(f"Status code: {response.status_code}")
-print(f"Response: {response.json()}")
+    # Test metrics endpoint
+    print("\nTesting /metrics endpoint...")
+    response = client.get("/metrics")
+    print(f"Status code: {response.status_code}")
+    print(f"Response: {response.json()}")
 
-# Test recommendation endpoint
-print("\nTesting /recommend endpoint...")
-response = client.get(f"/recommend?user_id={users[0]}&k=3")
-print(f"Status code: {response.status_code}")
-print(f"Response: {json.dumps(response.json(), indent=2)}")
+    # Test recommendation endpoint
+    print("\nTesting /recommend endpoint...")
+    response = client.get(f"/recommend?user_id={users[0]}&k=3")
+    print(f"Status code: {response.status_code}")
+    print(f"Response: {json.dumps(response.json(), indent=2)}")
 
-# Test similar items endpoint
-print("\nTesting /similar-items endpoint...")
-response = client.get(f"/similar-items?item_id={items[0]}&k=3")
-print(f"Status code: {response.status_code}")
-print(f"Response: {json.dumps(response.json(), indent=2)}")
+    # Test similar items endpoint
+    print("\nTesting /similar-items endpoint...")
+    response = client.get(f"/similar-items?item_id={items[0]}&k=3")
+    print(f"Status code: {response.status_code}")
+    print(f"Response: {json.dumps(response.json(), indent=2)}")
 
-print("\nAPI test complete")
+    print("\nAPI test complete")

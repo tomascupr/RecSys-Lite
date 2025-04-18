@@ -1,0 +1,15 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install dependencies
+RUN pip install --no-cache-dir fastapi uvicorn numpy
+
+# Copy simple API
+COPY simple_api.py .
+
+# Expose API port
+EXPOSE 8000
+
+# Run API server using unbuffered output
+CMD ["python", "simple_api.py"]

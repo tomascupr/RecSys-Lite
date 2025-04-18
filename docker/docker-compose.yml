@@ -16,7 +16,7 @@ services:
       - "8000:8000"
     environment:
       - DB_PATH=/data/recsys.db
-      - MODEL_PATH=/app/model_artifacts
+      - MODEL_PATH=/app/model_artifacts/als
       - LOG_LEVEL=INFO
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:8000/health || exit 1"]

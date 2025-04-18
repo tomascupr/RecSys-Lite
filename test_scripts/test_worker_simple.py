@@ -5,6 +5,7 @@ from pathlib import Path
 
 import numpy as np
 import scipy.sparse as sp
+from recsys_lite.update.worker import UpdateWorker
 
 # Add the project's src directory to the Python path
 project_dir = Path(__file__).parent.parent
@@ -46,10 +47,8 @@ class MockFaissIndex:
         return True
 
 
-import time  # moved to top to satisfy Ruff E402
 
-# Import the UpdateWorker class we want to test
-from recsys_lite.update.worker import UpdateWorker
+# Initialize the UpdateWorker class we imported
 
 print("Testing UpdateWorker initialization...")
 

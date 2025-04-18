@@ -176,7 +176,7 @@ def create_app(model_dir: Union[str, Path] = "model_artifacts/als") -> FastAPI:
         Args:
             user_id: User ID to get recommendations for
             k: Number of recommendations to return
-            use_faiss: Whether to use Faiss index (faster) or direct model recommendations (more accurate)
+            use_faiss: Whether to use Faiss index (faster) or direct model predictions
 
         Returns:
             Recommendation response

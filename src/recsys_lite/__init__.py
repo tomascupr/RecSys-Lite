@@ -1,3 +1,4 @@
+from typing import Any
 from unittest.mock import MagicMock  # noqa: E402
 
 # Patch MagicMock behaviours only once

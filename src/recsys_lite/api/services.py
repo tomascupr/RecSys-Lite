@@ -44,12 +44,16 @@ class VectorService:
         if hasattr(model, "get_user_factors"):
             user_factors = model.get_user_factors()
             if user_factors is not None and user_idx < len(user_factors):
-                return cast(NDArray[np.float32], user_factors[user_idx].reshape(1, -1).astype(np.float32))
+                return cast(NDArray[np.float32], 
+                              user_factors[user_idx].reshape(1, -1).astype(np.float32))
         
         # Fallback to random vector
         if vector_size is None:
             vector_size = getattr(model, "factors", 100)
-        return cast(NDArray[np.float32], np.random.random(vector_size).astype(np.float32).reshape(1, -1))
+        return cast(
+            NDArray[np.float32], 
+            np.random.random(vector_size).astype(np.float32).reshape(1, -1)
+        )
     
     def get_item_vector(
         self,
@@ -85,12 +89,16 @@ class VectorService:
         if hasattr(model, "get_item_factors"):
             item_factors = model.get_item_factors()
             if item_factors is not None and item_idx < len(item_factors):
-                return cast(NDArray[np.float32], item_factors[item_idx].reshape(1, -1).astype(np.float32))
+                return cast(NDArray[np.float32], 
+                              item_factors[item_idx].reshape(1, -1).astype(np.float32))
         
         # Fallback to random vector
         if vector_size is None:
             vector_size = getattr(model, "factors", 100)
-        return cast(NDArray[np.float32], np.random.random(vector_size).astype(np.float32).reshape(1, -1))
+        return cast(
+            NDArray[np.float32], 
+            np.random.random(vector_size).astype(np.float32).reshape(1, -1)
+        )
 
 
 class RecommendationService:

@@ -2,6 +2,12 @@
 
 A lightweight recommendation system designed for small e-commerce shops running on CPU-only environments. RecSys-Lite provides multiple recommendation algorithms, automatic hyperparameter optimization, fast recommendation serving via Faiss, and a React widget for displaying recommendations.
 
+![RecSys-Lite](https://img.shields.io/badge/RecSys--Lite-v0.1.0-blue)
+![Python](https://img.shields.io/badge/Python-3.11%2B-blue)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.100.0-green)
+![React](https://img.shields.io/badge/React-18-blue)
+![License](https://img.shields.io/badge/License-MIT-green)
+
 ## Features
 
 - **Multiple Recommendation Algorithms**:

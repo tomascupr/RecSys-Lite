@@ -1,11 +1,11 @@
 """Simple FastAPI service for RecSys-Lite."""
 
+import random
 from typing import Dict, List
 
-import duckdb
 import numpy as np
 import uvicorn
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Query
 from pydantic import BaseModel
 
 app = FastAPI(
@@ -49,36 +49,11 @@ async def recommend(
     Returns:
         Recommendation response with user ID and recommendations
     """
-    # For demo purposes, we'll return random items from the database
-    conn = duckdb.connect("data/recsys.db")
-
-    # Check if user exists
-    user_exists = conn.execute(
-        f"SELECT COUNT(*) FROM events WHERE user_id = '{user_id}'"
-    ).fetchone()[0]
-
-    if not user_exists:
-        raise HTTPException(status_code=404, detail=f"User {user_id} not found")
-
-    # Get items not interacted with by the user
-    items = conn.execute(
-        f"""
-        SELECT i.item_id, i.price 
-        FROM items i
-        WHERE i.item_id NOT IN (
-            SELECT item_id FROM events WHERE user_id = '{user_id}'
-        )
-        ORDER BY RANDOM()
-        LIMIT {k}
-        """
-    ).fetchall()
-
-    conn.close()
-
-    # Create recommendations with random scores
+    # For demo purposes, we'll return random item IDs
     recommendations = []
-    for item_id, _price in items:
-        score = np.random.random()  # Random score for demo
+    for _ in range(k):
+        item_id = f"I_{random.randint(0, 500):04d}"
+        score = random.random()
         recommendations.append(Recommendation(item_id=item_id, score=float(score)))
 
     return RecommendationResponse(

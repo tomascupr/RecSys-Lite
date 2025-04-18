@@ -46,28 +46,41 @@ jobs:
         # Set environment variable for the whole job
         echo "CI=true" >> $GITHUB_ENV
         # Skip LightFM completely for CI - it's causing build issues
-        # Install remaining dependencies via pip
+        # Install dependencies with specific versions
+        python -m pip install duckdb==0.8.1 typer==0.8.0 implicit==0.7.0 gensim==4.3.1 optuna==3.3.0 faiss-cpu==1.7.4 fastapi==0.100.0 uvicorn==0.23.0 pydantic==2.0.0
+        # Install the package itself without dependencies (we've already installed them with correct versions)
         python -m pip install -e . --no-dependencies
-        # Install remaining dependencies manually
-        python -m pip install duckdb typer implicit gensim optuna faiss-cpu fastapi uvicorn pydantic
         # Install optional packages using mock implementations
         if [ "$CI" = "true" ]; then
-          # Instead of torch, install a minimal mock package for torch
+          # Create a proper PyPI-installable mock package for torch
           mkdir -p torch_mock
-          echo 'class Module: pass' > torch_mock/__init__.py
-          python -m pip install -e torch_mock/
-          # Create directory in site-packages
-          SITE_PACKAGES=$(python -c "import site; print(site.getsitepackages()[0])")
-          TORCH_DIR=$SITE_PACKAGES/torch
-          mkdir -p $TORCH_DIR
-          mkdir -p $TORCH_DIR/nn
-          mkdir -p $TORCH_DIR/optim
-          mkdir -p $TORCH_DIR/utils/data
-          # Create minimal mock files
-          echo 'class Module: pass' > $TORCH_DIR/__init__.py
-          echo 'class Linear: pass\nclass GRU: pass\nclass CrossEntropyLoss: pass\nfrom torch import Module' > $TORCH_DIR/nn/__init__.py
-          echo 'class Adam: pass' > $TORCH_DIR/optim/__init__.py
-          echo 'class Dataset: pass\nclass DataLoader: pass' > $TORCH_DIR/utils/data/__init__.py
+          mkdir -p torch_mock/torch
+          mkdir -p torch_mock/torch/nn
+          mkdir -p torch_mock/torch/optim
+          mkdir -p torch_mock/torch/utils/data
+          
+          # Create mock module files
+          echo 'class Module: pass' > torch_mock/torch/__init__.py
+          echo 'class Linear: pass\nclass GRU: pass\nclass CrossEntropyLoss: pass\nfrom torch import Module' > torch_mock/torch/nn/__init__.py
+          echo 'class Adam: pass' > torch_mock/torch/optim/__init__.py
+          mkdir -p torch_mock/torch/utils
+          touch torch_mock/torch/utils/__init__.py
+          echo 'class Dataset: pass\nclass DataLoader: pass' > torch_mock/torch/utils/data/__init__.py
+          
+          # Create setup.py for the mock
+          cat > torch_mock/setup.py << 'EOF'
+from setuptools import setup, find_packages
+
+setup(
+    name="torch",
+    version="0.0.1",
+    packages=find_packages(),
+    description="Mock PyTorch package for CI testing"
+)
+EOF
+          
+          # Install the mock torch package
+          cd torch_mock && python -m pip install -e . && cd ..
           python -c "import torch; print('Torch mock installed successfully!')"
         fi
     

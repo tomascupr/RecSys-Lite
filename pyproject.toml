@@ -9,17 +9,17 @@ packages = [{include = "recsys_lite", from = "src"}]
 
 [tool.poetry.dependencies]
 python = "^3.11"
-duckdb = "^0.8.1"
-typer = "^0.8.0"
+duckdb = ">=0.8.1,<0.9.0"
+typer = ">=0.8.0,<0.9.0"
 implicit = "^0.7.0"
 gensim = "^4.3.1"
 # LightFM is skipped in CI due to build issues
 # Keeping as optional dependency for local development
 lightfm = {version = "==1.16", optional = true}
-optuna = "^3.3.0"
+optuna = ">=3.3.0,<4.0.0"
 faiss-cpu = "^1.7.4"
-fastapi = "^0.100.0"
-uvicorn = "^0.23.0"
+fastapi = ">=0.100.0,<0.101.0"
+uvicorn = ">=0.23.0,<0.24.0"
 pydantic = "^2.0.0"
 numpy = "^1.24.0"
 scipy = "^1.11.0"

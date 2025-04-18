@@ -19,7 +19,8 @@ jobs:
       - name: Download workflow artifact
         uses: dawidd6/action-download-artifact@v3
         with:
-          workflow: ci.yml
+          # Use the CI workflow by name (not file) for artifact lookup
+          workflow: CI
           run_id: ${{ github.event.workflow_run.id }}
           name: test-results
           path: artifacts

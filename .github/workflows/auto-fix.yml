@@ -31,7 +31,8 @@ jobs:
       - name: Download test results
         uses: dawidd6/action-download-artifact@v3
         with:
-          workflow: ci.yml
+          # Use the CI workflow by name for artifact lookup
+          workflow: CI
           run_id: ${{ github.event.workflow_run.id }}
           name: test-results
           path: artifacts
@@ -40,7 +41,8 @@ jobs:
       - name: Download workflow logs
         uses: dawidd6/action-download-artifact@v3
         with:
-          workflow: ci.yml
+          # Use the CI workflow by name for artifact lookup
+          workflow: CI
           run_id: ${{ github.event.workflow_run.id }}
           name: workflow-logs
           path: logs

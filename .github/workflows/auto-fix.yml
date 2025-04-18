@@ -5,13 +5,11 @@ on:
     workflows: ["CI"]
     types:
       - completed
-    branches:
-      - main
 
 jobs:
   analyze-and-fix:
     runs-on: ubuntu-latest
-    if: github.event.workflow_run.conclusion == 'failure'
+    if: ${{ github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.head_branch == 'main' }}
     permissions:
       contents: write
       pull-requests: write
@@ -52,68 +50,48 @@ jobs:
           git checkout -b $BRANCH_NAME
           echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
       
-      - name: Install test dependencies
+      - name: Set up Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: 1.5.1
+
+      - name: Install project dependencies
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install ruff mypy black pytest
+          # Install project and dev dependencies for auto-fix
+          poetry config virtualenvs.create false --local
+          poetry install --with dev --no-interaction
       
       - name: Analyze and fix issues
         id: fix
         run: |
-          MADE_CHANGES=false
-          
-          # Check for test results
-          if [ -f artifacts/test-results.xml ]; then
-            echo "Analyzing test failures from test-results.xml"
-            
-            # Check for import errors
-            IMPORT_ERRORS=$(grep -c "ModuleNotFoundError: No module named" artifacts/test-results.xml || echo "0")
-            if [ "$IMPORT_ERRORS" -gt 0 ]; then
-              echo "Found missing import errors - adding to requirements"
-              # Extract missing modules from test results
-              MISSING_MODULES=$(grep -o "ModuleNotFoundError: No module named '[^']*'" artifacts/test-results.xml | cut -d"'" -f2)
-              
-              for MODULE in $MISSING_MODULES; do
-                echo "Installing missing module: $MODULE"
-                python -m pip install $MODULE
-                # Add to requirements or pyproject.toml
-                if [ -f "pyproject.toml" ]; then
-                  echo "Adding $MODULE to pyproject.toml"
-                  # This is a simplified approach - consider a more robust solution
-                  # for real projects
-                  sed -i "/^python = /a $MODULE = \"*\"" pyproject.toml
-                  MADE_CHANGES=true
-                fi
+          # Detect missing dependencies from test logs
+          if [ -f logs/test-output.log ]; then
+            MISSING=$(grep -Eo "ModuleNotFoundError: No module named '([^']+)'" logs/test-output.log \
+                      | sed -E "s/ModuleNotFoundError: No module named '([^']+)'/\1/" \
+                      | sort -u)
+            if [ -n "$MISSING" ]; then
+              echo "Adding missing dependencies: $MISSING"
+              for MOD in $MISSING; do
+                poetry add --group dev "$MOD" || echo "Failed to add $MOD"
               done
             fi
           fi
-          
-          # Run Ruff with --fix option to automatically fix linting issues
+
+          # Run auto-formatters and linters
           echo "Running Ruff auto-fix"
-          python -m ruff check --fix .
-          if [ $? -eq 0 ]; then
-            echo "Ruff fixed some issues"
-            MADE_CHANGES=true
-          fi
-          
-          # Run Black to format code
-          echo "Running Black to format code"
-          python -m black .
-          if [ $? -eq 0 ]; then
-            echo "Black formatted some files"
-            MADE_CHANGES=true
-          fi
-          
-          # Check if we made any changes
-          git diff --exit-code > /dev/null 2>&1
-          if [ $? -ne 0 ]; then
-            echo "Changes detected, will commit"
-            MADE_CHANGES=true
-          else
+          ruff --fix .
+
+          echo "Running Black"
+          black .
+
+          # Determine if any changes were made
+          if git diff --quiet; then
             echo "No changes made by automatic fixing"
+            echo "made_changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "Changes detected, will commit"
+            echo "made_changes=true" >> $GITHUB_OUTPUT
           fi
-          
-          echo "made_changes=$MADE_CHANGES" >> $GITHUB_OUTPUT
       
       - name: Commit and push changes
         if: steps.fix.outputs.made_changes == 'true'

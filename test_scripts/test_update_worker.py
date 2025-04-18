@@ -60,6 +60,7 @@ events_df = pd.DataFrame(events_data, columns=["user_id", "item_id", "ts", "qty"
 
 # Initialize database
 conn = duckdb.connect(str(db_path))
+conn.execute("DROP TABLE IF EXISTS events")
 conn.execute(
     """
     CREATE TABLE events (

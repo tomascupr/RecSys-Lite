@@ -42,22 +42,25 @@ class Item2VecModel(BaseRecommender):
         self.item_vectors: Dict[str, np.ndarray] = {}
         self.user_item_sessions: Dict[Union[int, str], List[str]] = {}
 
-    def fit(self, user_item_matrix: sp.csr_matrix, **kwargs: Any) -> None:
+    def fit(self, data, **kwargs: Any) -> None:
         """Fit the Item2Vec model.
 
         Args:
-            user_item_matrix: Sparse user-item interaction matrix
+            data: Either a sparse user-item interaction matrix or a list of sessions
             **kwargs: Additional model-specific parameters
         """
         # Item2Vec normally works with sessions, not a matrix
         # For compatibility, extract sessions from the matrix if provided
         if "user_sessions" in kwargs:
             user_sessions = kwargs["user_sessions"]
+        elif isinstance(data, list):
+            # If data is already a list of sessions, use it directly
+            user_sessions = data
         else:
             # Create simple sessions from the matrix (not ideal but works for compatibility)
             user_sessions = []
-            for user_idx in range(user_item_matrix.shape[0]):
-                items = user_item_matrix[user_idx].indices.astype(str).tolist()
+            for user_idx in range(data.shape[0]):
+                items = data[user_idx].indices.astype(str).tolist()
                 if items:
                     user_sessions.append(items)
 
@@ -139,7 +142,7 @@ class Item2VecModel(BaseRecommender):
     def _update_item_vectors(self) -> None:
         """Update item vectors from trained model."""
         items = list(self.model.wv.index_to_key)
-        self.item_vectors = {item: self.model.wv[item] for item in items}
+        self.item_vectors = {item: np.array(self.model.wv[item]) for item in items}
 
     def get_item_vectors(self) -> Dict[str, np.ndarray]:
         """Get item vectors dictionary.

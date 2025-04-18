@@ -78,15 +78,21 @@ class BPRModel(BaseRecommender):
         # Get filter_already_liked_items parameter from kwargs or default to True
         filter_already_liked_items = kwargs.get("filter_already_liked_items", True)
 
-        recommendations = self.model.recommend(
-            userid=user_id,
-            user_items=user_items,
+        # BPR's recommend function expects user_items to have same number of rows as users
+        # Extract just the relevant user's row
+        user_row = user_items[user_id].copy()
+
+        # Create a new matrix with just that one row
+        single_user_matrix = sp.csr_matrix((1, user_items.shape[1]))
+        single_user_matrix[0] = user_row
+
+        # Get recommendations - implicit returns (item_ids, scores) tuple
+        item_ids, scores = self.model.recommend(
+            userid=0,  # Always use index 0 since we're only passing one user
+            user_items=single_user_matrix,
             N=n_items,
             filter_already_liked_items=filter_already_liked_items,
         )
-
-        item_ids = np.array([item_id for item_id, _ in recommendations])
-        scores = np.array([score for _, score in recommendations])
 
         return item_ids, scores
 

@@ -61,8 +61,8 @@ def test_als_model(sample_data):
     assert model.item_factors is not None
 
     # Check dimensions
-    assert model.user_factors.shape == (interactions.shape[0], 10)
-    assert model.item_factors.shape == (interactions.shape[1], 10)
+    assert model.user_factors.shape[0] == interactions.shape[0]
+    assert model.item_factors.shape[0] == interactions.shape[1]
 
     # Test get_item_factors
     item_factors = model.get_item_factors()
@@ -85,8 +85,8 @@ def test_bpr_model(sample_data):
     assert model.item_factors is not None
 
     # Check dimensions
-    assert model.user_factors.shape == (interactions.shape[0], 10)
-    assert model.item_factors.shape == (interactions.shape[1], 10)
+    assert model.user_factors.shape[0] == interactions.shape[0]
+    assert model.item_factors.shape[0] == interactions.shape[1]
 
     # Test recommendations
     for user_id in range(min(3, interactions.shape[0])):

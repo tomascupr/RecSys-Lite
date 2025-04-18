@@ -45,7 +45,14 @@ class MockModel:
         if not self.is_fitted:
             raise ValueError("Model not fitted")
 
-        self.item_factors.shape[0]
+        # Convert user_id to int if needed
+        if isinstance(user_id, str):
+            # Handle user IDs with 'U_' prefix by removing the prefix
+            if user_id.startswith('U_'):
+                user_id = int(user_id[2:])
+            else:
+                user_id = int(user_id)
+            
         user_vector = self.user_factors[user_id]
 
         # Calculate scores

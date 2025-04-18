@@ -41,7 +41,7 @@ jobs:
             ERRORS=${ERRORS:-0}
             SKIPPED=${SKIPPED:-0}
             # Calculate passed tests safely
-            PASSED=$(expr "$TOTAL" - "$FAILURES" - "$ERRORS" - "$SKIPPED")
+            PASSED=$((TOTAL - FAILURES - ERRORS - SKIPPED))
             
             echo "Test Summary:"
             echo "- Total: $TOTAL"

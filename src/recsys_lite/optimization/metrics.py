@@ -26,7 +26,9 @@ def hr_at_k(true_items: List[int], recommended_items: List[int], k: int = 20) ->
     return 1.0 if hits > 0 else 0.0
 
 
-def ndcg_at_k(true_items: List[int], recommended_items: List[int], k: int = 20) -> float:
+def ndcg_at_k(
+    true_items: List[int], recommended_items: List[int], k: int = 20
+) -> float:
     """Calculate Normalized Discounted Cumulative Gain at K.
 
     Args:
@@ -41,14 +43,18 @@ def ndcg_at_k(true_items: List[int], recommended_items: List[int], k: int = 20) 
     recommended_items = recommended_items[:k]
 
     # Calculate relevance (1 if in true items, 0 otherwise)
-    relevance = np.array([1.0 if item in true_items else 0.0 for item in recommended_items])
+    relevance = np.array(
+        [1.0 if item in true_items else 0.0 for item in recommended_items]
+    )
 
     # If no relevant items, return 0
     if sum(relevance) == 0:
         return 0.0
 
     # Calculate DCG
-    discounts = np.log2(np.arange(2, len(relevance) + 2))  # [log2(2), log2(3), ..., log2(k+1)]
+    discounts = np.log2(
+        np.arange(2, len(relevance) + 2)
+    )  # [log2(2), log2(3), ..., log2(k+1)]
     dcg = np.sum(relevance / discounts)
 
     # Calculate ideal DCG (all relevant items at the top)

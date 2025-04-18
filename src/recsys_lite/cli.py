@@ -69,10 +69,14 @@ def ingest(
 def train(
     model_type: ModelType = typer.Argument(..., help="Model type to train"),
     db: Path = typer.Option("recsys.db", help="Path to DuckDB database"),
-    output: Path = typer.Option("model_artifacts", help="Output directory for model artifacts"),
+    output: Path = typer.Option(
+        "model_artifacts", help="Output directory for model artifacts"
+    ),
     test_size: float = typer.Option(0.2, help="Fraction of data to use for testing"),
     seed: int = typer.Option(42, help="Random seed for reproducibility"),
-    params_file: Optional[Path] = typer.Option(None, help="JSON file with model parameters"),
+    params_file: Optional[Path] = typer.Option(
+        None, help="JSON file with model parameters"
+    ),
 ) -> None:
     """Train a recommendation model."""
     # Load parameters from file if provided
@@ -226,14 +230,18 @@ def train(
 def optimize(
     model_type: ModelType = typer.Argument(..., help="Model type to optimize"),
     db: Path = typer.Option("recsys.db", help="Path to DuckDB database"),
-    output: Path = typer.Option("model_artifacts", help="Output directory for model artifacts"),
+    output: Path = typer.Option(
+        "model_artifacts", help="Output directory for model artifacts"
+    ),
     metric: MetricType = typer.Option(MetricType.NDCG_20, help="Evaluation metric"),
     trials: int = typer.Option(20, help="Number of optimization trials"),
     test_size: float = typer.Option(0.2, help="Fraction of data to use for testing"),
     seed: int = typer.Option(42, help="Random seed for reproducibility"),
 ) -> None:
     """Optimize hyperparameters for a recommendation model."""
-    typer.echo(f"Optimizing {model_type.value} model using {metric.value} with {trials} trials")
+    typer.echo(
+        f"Optimizing {model_type.value} model using {metric.value} with {trials} trials"
+    )
 
     # Connect to database
     conn = duckdb.connect(str(db))
@@ -298,7 +306,9 @@ def optimize(
                 sessions.append(user_items)
 
         # Can't use the standard optimization for Item2Vec due to different input format
-        typer.echo("Item2Vec optimization is not implemented. Using default parameters.")
+        typer.echo(
+            "Item2Vec optimization is not implemented. Using default parameters."
+        )
         params = {"vector_size": 100, "window": 5, "min_count": 1, "sg": 1, "epochs": 5}
         model = cast(BaseRecommender, Item2VecModel(**params))
         # Item2Vec needs special handling for fit
@@ -318,7 +328,9 @@ def optimize(
 
         # Create Faiss index - use direct access to Item2Vec specific method
         # Use type cast to satisfy the type checker
-        item_vectors = cast(Item2VecModel, model).get_item_vectors_matrix(list(item_to_idx.keys()))
+        item_vectors = cast(Item2VecModel, model).get_item_vectors_matrix(
+            list(item_to_idx.keys())
+        )
         index_builder = FaissIndexBuilder(
             vectors=item_vectors,
             ids=list(item_to_idx.keys()),
@@ -513,7 +525,9 @@ def gdpr(
         conn = duckdb.connect(str(db))
 
         # Get user events
-        events_df = conn.execute(f"SELECT * FROM events WHERE user_id = '{user_id}'").fetchdf()
+        events_df = conn.execute(
+            f"SELECT * FROM events WHERE user_id = '{user_id}'"
+        ).fetchdf()
 
         # Get item details for items the user interacted with
         item_ids = events_df["item_id"].tolist()
@@ -528,7 +542,9 @@ def gdpr(
         # Create export data
         export_data = {
             "user_id": user_id,
-            "events": events_df.to_dict(orient="records") if not events_df.empty else [],
+            "events": events_df.to_dict(orient="records")
+            if not events_df.empty
+            else [],
             "items": items_df.to_dict(orient="records")
             if items_df is not None and not items_df.empty
             else [],
@@ -580,7 +596,9 @@ def _create_interaction_matrix(
 # ---------------------------------------------------------------------------
 
 
-def get_interactions_matrix(db_path: Path) -> tuple[csr_matrix, Dict[str, int], Dict[str, int]]:  # pragma: no cover
+def get_interactions_matrix(
+    db_path: Path,
+) -> tuple[csr_matrix, Dict[str, int], Dict[str, int]]:  # pragma: no cover
     """Fetch events from *db_path* and build a CSR interaction matrix.
 
     The helper exists primarily for the test‑suite (``tests/test_cli.py``)
@@ -597,6 +615,7 @@ def get_interactions_matrix(db_path: Path) -> tuple[csr_matrix, Dict[str, int], 
 
     if not hasattr(conn, "execute"):
         from scipy.sparse import csr_matrix as _csr
+
         return _csr((0, 0)), {}, {}
 
     # Get distinct users and items to build stable index mappings
@@ -625,7 +644,9 @@ def get_interactions_matrix(db_path: Path) -> tuple[csr_matrix, Dict[str, int], 
 
     if not hasattr(events_df, "__getitem__") or "user_id" not in events_df:
         # Return empty sparse matrix and the computed (possibly empty) mappings
-        from scipy.sparse import csr_matrix as _csr  # local import to keep top level clean
+        from scipy.sparse import (
+            csr_matrix as _csr,  # local import to keep top level clean
+        )
 
         return _csr((0, 0)), user_mapping, item_mapping
 
@@ -633,6 +654,7 @@ def get_interactions_matrix(db_path: Path) -> tuple[csr_matrix, Dict[str, int], 
         matrix = _create_interaction_matrix(events_df, user_mapping, item_mapping)
     except Exception:
         from scipy.sparse import csr_matrix as _csr
+
         matrix = _csr((len(user_mapping), len(item_mapping)))
 
     return matrix, user_mapping, item_mapping

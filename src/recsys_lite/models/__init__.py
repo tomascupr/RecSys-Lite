@@ -4,10 +4,10 @@ import os
 
 from recsys_lite.models.als import ALSModel
 from recsys_lite.models.base import (
-    BaseRecommender, 
-    FactorizationModelMixin, 
+    BaseRecommender,
+    FactorizationModelMixin,
     ModelPersistenceMixin,
-    ModelRegistry
+    ModelRegistry,
 )
 from recsys_lite.models.bpr import BPRModel
 from recsys_lite.models.item2vec import Item2VecModel

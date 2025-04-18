@@ -161,7 +161,9 @@ class GRU4Rec(BaseRecommender):
         self.n_items = n_items
         self.batch_size = batch_size
         self.n_epochs = n_epochs
-        self.device = torch.device("cuda" if use_cuda and torch.cuda.is_available() else "cpu")
+        self.device = torch.device(
+            "cuda" if use_cuda and torch.cuda.is_available() else "cpu"
+        )
 
         # Create model
         self.model = GRU4RecModel(
@@ -270,7 +272,9 @@ class GRU4Rec(BaseRecommender):
         session = kwargs.get("session", [])
         return self.predict_next_items(session, n_items)
 
-    def predict_next_items(self, session: List[int], k: int = 10) -> Tuple[np.ndarray, np.ndarray]:
+    def predict_next_items(
+        self, session: List[int], k: int = 10
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """Predict next items for a session.
 
         Args:

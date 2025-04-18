@@ -1,7 +1,7 @@
 """Error handling for RecSys-Lite API."""
 
 import logging
-from typing import Any, Callable, Dict, Optional, Type, TypedDict, cast
+from typing import Callable, Dict, Optional, Type, TypedDict, cast
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
@@ -12,13 +12,13 @@ logger = logging.getLogger("recsys-lite.api")
 
 class RecSysError(Exception):
     """Base exception for RecSys-Lite API errors."""
-    
+
     status_code: int = status.HTTP_500_INTERNAL_SERVER_ERROR
     detail: str = "An unexpected error occurred"
-    
+
     def __init__(self, detail: Optional[str] = None):
         """Initialize exception.
-        
+
         Args:
             detail: Error detail message
         """
@@ -29,19 +29,19 @@ class RecSysError(Exception):
 
 class NotFoundError(RecSysError):
     """Error raised when a resource is not found."""
-    
+
     status_code = status.HTTP_404_NOT_FOUND
     detail = "Resource not found"
 
 
 class UserNotFoundError(NotFoundError):
     """Error raised when a user is not found."""
-    
+
     detail = "User not found"
-    
+
     def __init__(self, user_id: Optional[str] = None):
         """Initialize exception.
-        
+
         Args:
             user_id: User ID that was not found
         """
@@ -51,12 +51,12 @@ class UserNotFoundError(NotFoundError):
 
 class ItemNotFoundError(NotFoundError):
     """Error raised when an item is not found."""
-    
+
     detail = "Item not found"
-    
+
     def __init__(self, item_id: Optional[str] = None):
         """Initialize exception.
-        
+
         Args:
             item_id: Item ID that was not found
         """
@@ -66,31 +66,34 @@ class ItemNotFoundError(NotFoundError):
 
 class ServiceUnavailableError(RecSysError):
     """Error raised when a service is unavailable."""
-    
+
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     detail = "Service unavailable"
 
 
 class ModelNotInitializedError(ServiceUnavailableError):
     """Error raised when the model is not initialized."""
-    
+
     detail = "Recommender system not initialized"
 
 
 def add_error_handlers(app: FastAPI) -> None:
     """Add error handlers to FastAPI app.
-    
+
     Args:
         app: FastAPI application
     """
+
     @app.exception_handler(RequestValidationError)
-    async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    async def validation_exception_handler(
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
         """Handle validation errors.
-        
+
         Args:
             request: FastAPI request
             exc: Validation exception
-            
+
         Returns:
             JSON response with error details
         """
@@ -99,15 +102,17 @@ def add_error_handlers(app: FastAPI) -> None:
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             content={"detail": str(exc)},
         )
-    
+
     @app.exception_handler(RecSysError)
-    async def recsys_exception_handler(request: Request, exc: RecSysError) -> JSONResponse:
+    async def recsys_exception_handler(
+        request: Request, exc: RecSysError
+    ) -> JSONResponse:
         """Handle RecSys-Lite API errors.
-        
+
         Args:
             request: FastAPI request
             exc: RecSys-Lite API exception
-            
+
         Returns:
             JSON response with error details
         """
@@ -116,15 +121,17 @@ def add_error_handlers(app: FastAPI) -> None:
             status_code=exc.status_code,
             content={"detail": exc.detail},
         )
-    
+
     @app.exception_handler(Exception)
-    async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    async def general_exception_handler(
+        request: Request, exc: Exception
+    ) -> JSONResponse:
         """Handle general exceptions.
-        
+
         Args:
             request: FastAPI request
             exc: Exception
-            
+
         Returns:
             JSON response with error details
         """
@@ -137,17 +144,17 @@ def add_error_handlers(app: FastAPI) -> None:
 
 class ErrorResponse(TypedDict):
     """Type definition for error response."""
-    
+
     status_code: int
     detail: str
 
 
 def _create_error_response(error: RecSysError) -> ErrorResponse:
     """Create error response from RecSys error.
-    
+
     Args:
         error: RecSys error
-        
+
     Returns:
         Error response
     """

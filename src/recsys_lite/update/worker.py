@@ -4,12 +4,11 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-import numpy as np
-from numpy.typing import NDArray
-
 import duckdb
 import faiss
+import numpy as np
 import scipy.sparse as sp
+from numpy.typing import NDArray
 
 
 class UpdateWorker:
@@ -106,7 +105,9 @@ class UpdateWorker:
                             # Append to existing events
                             events_df = events_df.append(new_events)
                     except Exception as e:
-                        print(f"Error reading incremental parquet file {parquet_file}: {e}")
+                        print(
+                            f"Error reading incremental parquet file {parquet_file}: {e}"
+                        )
 
         # Update last timestamp
         if not events_df.empty:
@@ -194,7 +195,9 @@ class UpdateWorker:
                 for i, item_id in enumerate(new_items):
                     self.item_id_map[start_idx + i] = item_id
 
-                print(f"Successfully added {len(new_items)} new items to the Faiss index")
+                print(
+                    f"Successfully added {len(new_items)} new items to the Faiss index"
+                )
             else:
                 print("No item vectors available to add")
         except Exception as e:

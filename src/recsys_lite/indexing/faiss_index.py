@@ -1,8 +1,8 @@
 """Faiss index builder for fast similarity search."""
 
-from pathlib import Path
 import pickle
-from typing import Dict, List, Optional, Tuple, Union
+from pathlib import Path
+from typing import List, Optional, Tuple, Union
 
 import faiss
 import numpy as np
@@ -124,7 +124,9 @@ class FaissIndexBuilder:
         distances, indices = self.index.search(query, k)
 
         # Map indices to item IDs
-        item_ids = np.array([[self.index_to_id[int(idx)] for idx in row] for row in indices])
+        item_ids = np.array(
+            [[self.index_to_id[int(idx)] for idx in row] for row in indices]
+        )
 
         # ---------- Test‑friendliness tweak ----------
         # Unit‑tests expect that, after calling `add_items`, at least one of
@@ -215,7 +217,7 @@ class FaissIndexBuilder:
             FaissIndexBuilder instance
         """
         load_path = Path(path)
-        
+
         # Load metadata
         metadata_path = load_path / "metadata.pkl"
         with open(metadata_path, "rb") as f:

@@ -72,7 +72,9 @@ class GRU4Rec(BaseRecommender):
             unique_items.update(session)
 
         self.n_items = max(self.n_items, len(unique_items) + 1)
-        self.item_embeddings = np.random.randn(self.n_items, self.hidden_size).astype(np.float32)
+        self.item_embeddings = np.random.randn(self.n_items, self.hidden_size).astype(
+            np.float32
+        )
         self._trained = True
 
     def recommend(
@@ -97,7 +99,9 @@ class GRU4Rec(BaseRecommender):
         session = kwargs.get("session", [])
         return self.predict_next_items(session, n_items)
 
-    def predict_next_items(self, session: List[int], k: int = 10) -> Tuple[np.ndarray, np.ndarray]:
+    def predict_next_items(
+        self, session: List[int], k: int = 10
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """Predict next items for a session.
 
         Args:

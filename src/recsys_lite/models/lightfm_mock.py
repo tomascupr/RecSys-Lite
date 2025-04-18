@@ -59,8 +59,12 @@ class LightFMModel(BaseRecommender):
         n_users, n_items = user_item_matrix.shape
         self.user_biases = np.zeros(n_users)
         self.item_biases = np.zeros(n_items)
-        self.user_embeddings = np.random.rand(n_users, self.no_components).astype(np.float32)
-        self.item_embeddings = np.random.rand(n_items, self.no_components).astype(np.float32)
+        self.user_embeddings = np.random.rand(n_users, self.no_components).astype(
+            np.float32
+        )
+        self.item_embeddings = np.random.rand(n_items, self.no_components).astype(
+            np.float32
+        )
 
     def recommend(
         self,
@@ -104,33 +108,33 @@ class LightFMModel(BaseRecommender):
         if self.item_embeddings is None:
             return np.array([])  # Return empty array if not initialized
         return np.asarray(self.item_embeddings)
-        
+
     def predict(self, user_ids: np.ndarray, item_ids: np.ndarray) -> np.ndarray:
         """Predict scores for the given user-item pairs.
-        
+
         Args:
             user_ids: User IDs
             item_ids: Item IDs
-            
+
         Returns:
             Array of scores
         """
         if self.user_embeddings is None or self.item_embeddings is None:
             raise ValueError("Model has not been trained")
-            
+
         # Generate random scores for the given user-item pairs
         scores = np.random.random(len(user_ids))
         return scores
-        
+
     def get_item_representations(self) -> Tuple[np.ndarray, np.ndarray]:
         """Get item biases and embeddings.
-        
+
         Returns:
             Tuple of (item_biases, item_embeddings)
         """
         if self.item_biases is None or self.item_embeddings is None:
             raise ValueError("Model has not been trained")
-            
+
         return self.item_biases, self.item_embeddings
 
     def save_model(self, path: str) -> None:

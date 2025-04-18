@@ -10,26 +10,19 @@ from typer.testing import CliRunner
 
 from unittest.mock import MagicMock, patch
 
-# Mock the imports that might fail
-class ModelType:
-    ALS = "als"
-    BPR = "bpr"
-    ITEM2VEC = "item2vec"
-    LIGHTFM = "lightfm"
-    GRU4REC = "gru4rec"
+# ---------------------------------------------------------------------------
+#  Use the *real* CLI artefacts instead of local stand‑ins.  The previous
+#  MagicMock placeholders prevented the tests from interacting with the
+#  production helpers (and caused unpacking errors).
+# ---------------------------------------------------------------------------
 
-class MetricType:
-    HR_10 = "hr@10"
-    HR_20 = "hr@20"
-    NDCG_10 = "ndcg@10" 
-    NDCG_20 = "ndcg@20"
-    
-# Create a mock app object
-app = MagicMock()
-
-# Mock the functions we need
-get_interactions_matrix = MagicMock()
-optimize_hyperparameters = MagicMock()
+from recsys_lite.cli import (
+    ModelType,
+    MetricType,
+    app,
+    get_interactions_matrix,
+    optimize_hyperparameters,
+)
 
 
 @pytest.fixture
@@ -97,8 +90,33 @@ def test_train_als_command(mock_get_matrix, mock_als_model, cli_runner, temp_dat
     mock_matrix = MagicMock()
     mock_get_matrix.return_value = (mock_matrix, {}, {})
     
-    # Mock os.makedirs
+    # Mock os.makedirs and duckdb.connect to avoid real I/O
     monkeypatch.setattr("os.makedirs", MagicMock())
+    # Mock duckdb.connect so that the train command sees a minimal *events*
+    # table.  The returned DataFrame needs just the columns that *train* uses
+    # (user_id, item_id, qty).
+    import pandas as pd
+
+    def _mock_execute(query: str):  # noqa: D401 – simple helper
+        df = pd.DataFrame(
+            {
+                "user_id": ["u1", "u1", "u2"],
+                "item_id": ["i1", "i2", "i3"],
+                "qty": [1, 2, 3],
+            }
+        )
+
+        # The real ``duckdb.execute`` returns an object that provides
+        # ``fetchdf()``.  We mimic just enough behaviour for the CLI.
+        fetcher = MagicMock()
+        fetcher.fetchdf.return_value = df
+        return fetcher
+
+    mock_conn = MagicMock()
+    mock_conn.execute.side_effect = _mock_execute
+
+    monkeypatch.setattr("recsys_lite.cli.duckdb.connect", lambda *a, **kw: mock_conn)
+    monkeypatch.setattr("recsys_lite.cli._create_interaction_matrix", MagicMock(return_value=mock_matrix))
     
     # Create a parameters file
     params_file = temp_data_dir["tmpdir"].join("als_params.json")
@@ -124,7 +142,9 @@ def test_train_als_command(mock_get_matrix, mock_als_model, cli_runner, temp_dat
     
     # Check the result
     assert result.exit_code == 0
-    assert "Training model: als" in result.stdout
+    # The CLI echoes a message that starts with "Training als model" – make
+    # sure we captured it.
+    assert "Training als model" in result.stdout
     
     # Verify the model was called with the parameters
     mock_als_model.assert_called_once_with(
@@ -145,35 +165,30 @@ def test_get_interactions_matrix(mock_connect, temp_data_dir):
     mock_conn = MagicMock()
     mock_connect.return_value = mock_conn
     
-    # Mock the fetchdf results
-    mock_conn.execute.return_value.fetchdf.return_value = MagicMock(
-        to_numpy=MagicMock(return_value=[(1, "item1"), (2, "item2"), (1, "item3")])
-    )
-    
     # Set up user and item lists for the mock
     users = ["user1", "user2"]
     items = ["item1", "item2", "item3"]
     
     # Mock the execute calls to return users and items
     def mock_execute(query):
+        df_mock = MagicMock()
         if "SELECT DISTINCT user_id" in query:
-            df_mock = MagicMock()
             df_mock.fetchdf.return_value = {"user_id": users}
             return df_mock
         elif "SELECT DISTINCT item_id" in query:
-            df_mock = MagicMock()
             df_mock.fetchdf.return_value = {"item_id": items}
             return df_mock
         elif "SELECT user_id, item_id, qty" in query:
-            df_mock = MagicMock()
             # Return a dataframe with user_id, item_id, qty columns
             df_mock.fetchdf.return_value = {
                 "user_id": ["user1", "user1", "user2"],
                 "item_id": ["item1", "item2", "item3"],
                 "qty": [1, 2, 3]
             }
+            # Make sure __getitem__ exists and works
+            df_mock.fetchdf.return_value.__getitem__ = lambda key: df_mock.fetchdf.return_value[key]
             return df_mock
-        return MagicMock()
+        return df_mock
     
     mock_conn.execute.side_effect = mock_execute
     

@@ -4,6 +4,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
@@ -55,10 +56,69 @@ def mock_model_dir():
 
 
 @pytest.fixture
-def test_client(mock_model_dir):
-    """Create TestClient instance for testing the API."""
+def mock_model(monkeypatch):
+    """Mock model to use in tests."""
+    # Create a mock model with necessary attributes
+    mock = MagicMock()
+    mock.user_factors = np.random.random((10, 10)).astype(np.float32)
+    mock.item_factors = np.random.random((20, 10)).astype(np.float32)
+    
+    # Add recommend method to match BaseRecommender interface
+    def mock_recommend(user_id, user_items, n_items):
+        return [0, 1, 2, 3, 4], [0.9, 0.8, 0.7, 0.6, 0.5]
+    mock.recommend = mock_recommend
+    
+    # Add get_user_representations and get_item_representations for LightFM
+    def mock_get_user_representations():
+        return (None, mock.user_factors)
+    mock.get_user_representations = mock_get_user_representations
+    
+    def mock_get_item_representations():
+        return (None, mock.item_factors)
+    mock.get_item_representations = mock_get_item_representations
+    
+    # Mock the model loading function to return the mock model
+    def mock_load(*args, **kwargs):
+        return None
+    mock.load_model = mock_load
+    
+    return mock
+
+@pytest.fixture
+def test_client(mock_model_dir, mock_model, monkeypatch):
+    """Create an initialised ``TestClient`` for the FastAPI service.
+
+    Starlette executes *startup* / *shutdown* lifespan events **only** when the
+    client is used as a context manager.  Without those events the Faiss index
+    stays un‑initialised and the endpoints would answer with *503 Service
+    Unavailable*.  We therefore enter the context here and yield the ready‑to‑
+    use instance to the calling test.
+    """
+
+    # ------------------------------------------------------------------
+    #   Patch the heavy model imports inside the application start‑up so
+    #   the tests remain lightweight – we simply return the prepared
+    #   ``mock_model`` regardless of which concrete implementation the
+    #   production code tries to load.
+    # ------------------------------------------------------------------
+
+    import sys
+    from types import ModuleType
+
+    fake_models_mod = ModuleType("recsys_lite.models")
+    fake_models_mod.ALSModel = lambda *a, **k: mock_model
+    fake_models_mod.BPRModel = lambda *a, **k: mock_model
+    fake_models_mod.LightFMModel = lambda *a, **k: mock_model
+    fake_models_mod.Item2VecModel = lambda *a, **k: mock_model
+    fake_models_mod.GRU4Rec = lambda *a, **k: mock_model
+
+    sys.modules["recsys_lite.models"] = fake_models_mod  # type: ignore[assignment]
+
     app = create_app(model_dir=mock_model_dir)
-    return TestClient(app)
+
+    # Enter the context manager so that *startup* is executed.
+    with TestClient(app) as client:
+        yield client
 
 
 def test_health_endpoint(test_client):

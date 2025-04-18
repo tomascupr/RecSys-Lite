@@ -1,6 +1,6 @@
 # RecSys-Lite Demo
 
-This is a simplified demo of the RecSys-Lite system.
+This is a simplified demo of the RecSys-Lite system, a lightweight recommendation engine designed for small e-commerce shops running on CPU-only environments.
 
 ## Demo Setup
 

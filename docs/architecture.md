@@ -2,7 +2,7 @@
 
 ## System Overview
 
-RecSys-Lite is a lightweight recommendation system designed for small e-commerce shops that need to run on CPU-only infrastructure and maintain data residency within the EU for GDPR compliance.
+RecSys-Lite is a lightweight recommendation system designed for small e-commerce shops that need to run on CPU-only infrastructure and maintain data residency within the EU for GDPR compliance. The system provides multiple recommendation algorithms, automatic hyperparameter optimization, fast recommendation serving, and a React widget for displaying recommendations.
 
 ```mermaid
 graph TD

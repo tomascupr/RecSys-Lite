@@ -1,6 +1,6 @@
 # RecSys-Lite Operations Runbook
 
-This runbook provides detailed operational guidance for deploying, maintaining, and troubleshooting the RecSys-Lite recommendation system.
+This runbook provides detailed operational guidance for deploying, maintaining, and troubleshooting the RecSys-Lite recommendation system. RecSys-Lite is a lightweight recommendation engine designed for small e-commerce shops, providing personalized product recommendations with minimal computational resources.
 
 ## Table of Contents
 

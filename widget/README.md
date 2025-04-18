@@ -3,7 +3,7 @@
 A React component library for displaying recommendations from RecSys-Lite API in your e-commerce applications.
 
 ![npm](https://img.shields.io/npm/v/recsys-lite-widget)
-![License](https://img.shields.io/npm/l/recsys-lite-widget)
+![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 ![Build](https://img.shields.io/badge/build-passing-brightgreen)
 ![Storybook](https://img.shields.io/badge/storybook-deployed-ff4785)
 ![Coverage](https://img.shields.io/badge/coverage-70%25-yellow)
@@ -176,4 +176,4 @@ npm run build
 
 ## License
 
-MIT
+Apache License 2.0

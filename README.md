@@ -6,7 +6,7 @@ A lightweight recommendation system designed for small e-commerce shops running 
 ![Python](https://img.shields.io/badge/Python-3.11%2B-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.100.0-green)
 ![React](https://img.shields.io/badge/React-18-blue)
-![License](https://img.shields.io/badge/License-MIT-green)
+![License](https://img.shields.io/badge/License-Apache%202.0-blue)
 
 ## Features
 
@@ -326,7 +326,7 @@ RecSys-Lite is designed with GDPR compliance in mind:
 
 ## License
 
-MIT
+Apache License 2.0
 
 ## Contributors
 

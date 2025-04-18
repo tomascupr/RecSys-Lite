@@ -1,115 +1,58 @@
 # RecSys-Lite Docker Setup
 
-This directory contains Docker configurations for running RecSys-Lite in various environments.
+This directory contains Docker configurations for deploying RecSys-Lite in various environments.
+
+## Available Docker Files
+
+- `Dockerfile`: Main application image
+- `Dockerfile.test`: Image for running tests
+- `Dockerfile.worker`: Image for update worker
+- `docker-compose.yml`: Development setup
+- `docker-compose.prod.yml`: Production setup
+- `docker-compose.test.yml`: Test environment
 
 ## Quick Start
 
-To start the entire system (API and update worker):
-
 ```bash
 # Development environment
-docker compose -f docker/docker-compose.yml up -d
+docker compose -f docker-compose.yml up -d
 
 # Production environment
-docker compose -f docker/docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml up -d
+
+# Test environment
+docker compose -f docker-compose.test.yml up
 ```
-
-## Configuration Files
-
-- `Dockerfile`: Main Dockerfile for the API service (optimized, <1GB size)
-- `Dockerfile.worker`: Dockerfile for the update worker service
-- `Dockerfile.test`: Dockerfile for running tests and development
-- `docker-compose.yml`: Development docker-compose for local development
-- `docker-compose.prod.yml`: Production docker-compose with resource limits and named volumes
-- `docker-compose.test.yml`: Test docker-compose for running tests and CI/CD
-
-## Docker Image Sizes
-
-The Docker images are optimized to be under 1GB as required:
-
-- `recsys-lite-api`: ~750MB (multi-stage build with distroless final image)
-- `recsys-lite-worker`: ~700MB (optimized Python image)
 
 ## Environment Variables
 
-### API Service
+The following environment variables can be configured:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DB_PATH` | Path to DuckDB database | `/data/recsys.db` |
-| `MODEL_PATH` | Path to model artifacts | `/app/model_artifacts` |
-| `LOG_LEVEL` | Logging level | `INFO` |
-| `MAX_WORKERS` | Number of Uvicorn workers | `4` |
-| `TIMEOUT` | Request timeout in seconds | `300` |
+| `MODEL_TYPE` | Type of model to use (als, bpr, item2vec, lightfm, gru4rec) | `als` |
+| `API_PORT` | Port for the API service | `8000` |
+| `WORKER_INTERVAL` | Interval for update worker in seconds | `60` |
+| `LOG_LEVEL` | Logging level (INFO, DEBUG, WARNING, ERROR) | `INFO` |
+| `THREADS` | Number of threads to use | `8` |
+| `MAX_RECOMMENDATIONS` | Maximum number of recommendations per request | `50` |
 
-### Update Worker
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DB_PATH` | Path to DuckDB database | `/data/recsys.db` |
-| `MODEL_PATH` | Path to model artifacts | `/app/model_artifacts/als` |
-| `UPDATE_INTERVAL` | Update interval in seconds | `60` |
-| `LOG_LEVEL` | Logging level | `INFO` |
-
-## Volume Mounts
-
-### Development
-
-In development mode, local directories are mounted:
-
-- `../data:/data`: DuckDB database and data files
-- `../model_artifacts:/app/model_artifacts`: Model artifacts
-- `../data/incremental:/data/incremental`: Incremental data files
-
-### Production
-
-In production mode, named volumes are used:
-
-- `recsys-data`: DuckDB database and data files
-- `recsys-models`: Model artifacts
-
-## Health Checks
-
-The API service includes a health check endpoint at `/health`. Docker is configured to use this endpoint for container health monitoring.
-
-## Resource Limits
-
-The production configuration includes resource limits:
-
-- API Service: 4 CPUs, 4GB RAM
-- Update Worker: 2 CPUs, 2GB RAM
-
-## Building and Testing
+## Building Images
 
 ```bash
-# Build and test the images
-docker compose -f docker/docker-compose.test.yml up
+# Build main image
+docker build -t recsys-lite:latest -f Dockerfile .
 
-# Check image size
-docker images | grep recsys-lite
+# Build worker image
+docker build -t recsys-lite-worker:latest -f Dockerfile.worker .
 ```
 
-## Troubleshooting
+## Security
 
-If you encounter issues:
+- The images use multi-stage builds to minimize size
+- Images are based on distroless containers to reduce attack surface
+- No unnecessary packages or services are included
 
-1. Check container logs:
-   ```bash
-   docker logs recsys-lite-api
-   docker logs recsys-lite-worker
-   ```
+## License
 
-2. Check container health:
-   ```bash
-   docker ps
-   ```
-
-3. Access API directly:
-   ```bash
-   curl http://localhost:8000/health
-   ```
-
-4. Check database file:
-   ```bash
-   docker exec -it recsys-lite-api ls -la /data
-   ```
+This project is licensed under the Apache License 2.0.

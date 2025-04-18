@@ -9,30 +9,39 @@ RUN apt-get update && \
     build-essential \
     gcc \
     && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir poetry==1.6.1 \
-    && poetry config virtualenvs.create false
+    && pip install --no-cache-dir --upgrade pip
 
-# Copy only poetry configuration files first to leverage caching
-COPY pyproject.toml poetry.lock* ./
+# Copy requirements to be installed first
+COPY requirements.txt .
 
-# Install production dependencies only
-RUN poetry install --no-dev --no-interaction --no-ansi
+# Install dependencies directly from requirements
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY src ./src
+# Copy entire context but use .dockerignore to exclude unnecessary files
+COPY . .
+
+# Install the package in development mode
+RUN pip install --no-cache-dir -e .
 
 # Remove unnecessary files to reduce image size
 RUN find /usr/local/lib/python3.11/site-packages -name "*.pyc" -delete \
     && find /usr/local/lib/python3.11/site-packages -name "__pycache__" -exec rm -rf {} +
 
-# Final stage - Use distroless for minimal image size
-FROM gcr.io/distroless/python3-debian11
+# Final stage - Use slim image for minimal size
+FROM python:3.11-slim
 
 WORKDIR /app
+
+# Install library dependencies required by packages
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy only needed files from builder stage
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin/uvicorn /usr/local/bin/
+COPY --from=builder /usr/local/bin/recsys-lite /usr/local/bin/
 COPY --from=builder /app/src ./src
 
 # Set environment variables
@@ -40,12 +49,11 @@ ENV PYTHONPATH=/app \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# Create data directory 
-# Note: We need to use a shell to create directories, which isn't available in distroless
-# Instead, we'll ensure volumes are mounted to these paths from docker-compose
+# Create needed directories
+RUN mkdir -p /app/data/incremental /app/model_artifacts
 
 # Expose API port
 EXPOSE 8000
 
 # Run API server using unbuffered output
-CMD ["uvicorn", "src.recsys_lite.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"]
+CMD ["uvicorn", "recsys_lite.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"]

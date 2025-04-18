@@ -1,39 +1,58 @@
-# Use the same base image as the API for consistency
-FROM python:3.11-slim-bullseye
+# Build stage
+FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
-# Install only necessary system dependencies
+# Install build dependencies and cleanup in one layer to reduce size
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     build-essential \
     gcc \
     && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir poetry==1.6.1 \
-    && poetry config virtualenvs.create false
+    && pip install --no-cache-dir --upgrade pip
 
-# Copy only poetry configuration files first to leverage caching
-COPY pyproject.toml poetry.lock* ./
+# Copy requirements to be installed first
+COPY requirements.txt .
 
-# Install production dependencies only, exclude API/web specific packages
-RUN poetry install --no-dev --without web --no-interaction --no-ansi
+# Install dependencies directly from requirements
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY src ./src
+# Copy entire context but use .dockerignore to exclude unnecessary files
+COPY . .
 
-# Clean up to reduce image size
-RUN find /usr/local/lib/python3.11 -name "__pycache__" -type d -exec rm -rf {} +
+# Install the package in development mode
+RUN pip install --no-cache-dir -e .
 
-# Create necessary directories
-RUN mkdir -p /data/incremental /app/model_artifacts
+# Remove unnecessary files to reduce image size
+RUN find /usr/local/lib/python3.11/site-packages -name "*.pyc" -delete \
+    && find /usr/local/lib/python3.11/site-packages -name "__pycache__" -exec rm -rf {} +
+
+# Final stage - Use slim image for minimal size
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install library dependencies required by packages
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy only needed files from builder stage
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin/recsys-lite /usr/local/bin/
+COPY --from=builder /app/src ./src
 
 # Set environment variables
 ENV PYTHONPATH=/app \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
+# Create needed directories
+RUN mkdir -p /app/data/incremental /app/model_artifacts
+
 # Start update worker
-CMD ["python", "-m", "src.recsys_lite.cli", "worker", \
+CMD ["recsys-lite", "worker", \
      "--model-dir", "${MODEL_PATH}", \
      "--db", "${DB_PATH}", \
      "--interval", "${UPDATE_INTERVAL:-60}"]

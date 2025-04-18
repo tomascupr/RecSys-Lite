@@ -1,9 +1,9 @@
 """Setup script for RecSys-Lite.
 
-This is only used to help with installing dependencies that have issues with Poetry and PEP 517.
+This is used for installing the package in development mode in Docker.
 """
 
-from setuptools import setup
+from setuptools import setup, find_namespace_packages
 
 if __name__ == "__main__":
     setup(
@@ -12,21 +12,13 @@ if __name__ == "__main__":
         description="Lightweight recommendation system for small e-commerce shops",
         author="RecSys-Lite Team",
         author_email="info@recsys-lite.com",
-        packages=["recsys_lite"],
+        packages=find_namespace_packages(where="src"),
         package_dir={"": "src"},
-        install_requires=[
-            "duckdb>=0.8.1",
-            "typer>=0.8.0",
-            "implicit>=0.7.0",
-            "gensim>=4.3.1",
-            # LightFM is installed separately
-            # "lightfm==1.16",
-            "optuna>=3.3.0",
-            "faiss-cpu>=1.7.4",
-            "fastapi>=0.100.0",
-            "uvicorn>=0.23.0",
-            "pydantic>=2.0.0",
-            "numpy>=1.24.0",
-            "scipy>=1.11.0",
-        ],
+        entry_points={
+            "console_scripts": [
+                "recsys-lite=recsys_lite.cli:app",
+            ],
+        },
+        python_requires=">=3.11",
+        # Dependencies are installed from requirements.txt in Docker
     )

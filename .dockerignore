@@ -38,6 +38,7 @@ model_artifacts/
 # Documentation
 docs/
 *.md
+!README.md
 LICENSE
 
 # Node.js (widget)

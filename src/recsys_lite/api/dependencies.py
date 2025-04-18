@@ -1,6 +1,6 @@
 """Dependencies for FastAPI application."""
 
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, cast
 
 from fastapi import Depends
 

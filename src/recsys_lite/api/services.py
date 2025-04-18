@@ -32,8 +32,12 @@ class VectorService:
         if hasattr(model, "get_user_vectors"):
             # Use the standardized interface if available
             vector_provider = cast(VectorProvider, model)
-            user_vectors = vector_provider.get_user_vectors([user_idx])
-            if user_vectors.size > 0:
+            try:
+                user_vectors = vector_provider.get_user_vectors([user_idx])
+            except Exception:
+                user_vectors = None
+            # Only accept numpy arrays from providers
+            if isinstance(user_vectors, np.ndarray) and user_vectors.size > 0:
                 return user_vectors[0].reshape(1, -1).astype(np.float32)
         
         # Fallback for older model implementations
@@ -68,8 +72,13 @@ class VectorService:
         if hasattr(model, "get_item_vectors"):
             # Use the standardized interface if available
             vector_provider = cast(VectorProvider, model)
-            item_vectors = vector_provider.get_item_vectors([item_id])
-            if item_vectors.size > 0:
+            try:
+                # Pass the item index to the provider (for factorization models)
+                item_vectors = vector_provider.get_item_vectors([item_idx])
+            except Exception:
+                item_vectors = None
+            # Only accept numpy arrays from providers
+            if isinstance(item_vectors, np.ndarray) and item_vectors.size > 0:
                 return item_vectors[0].reshape(1, -1).astype(np.float32)
         
         # Fallback for older model implementations

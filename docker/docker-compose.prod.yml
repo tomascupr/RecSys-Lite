@@ -1,0 +1,96 @@
+version: '3.8'
+
+# Production docker-compose configuration
+# This includes optimized settings for a production environment
+
+services:
+  # API service
+  recsys-lite-api:
+    image: recsys-lite-api:${VERSION:-latest}
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        - BUILD_ENV=production
+    volumes:
+      - recsys-data:/data
+      - recsys-models:/app/model_artifacts
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_PATH=/data/recsys.db
+      - MODEL_PATH=/app/model_artifacts
+      - LOG_LEVEL=INFO
+      - MAX_WORKERS=4
+      - TIMEOUT=300
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 1G
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    networks:
+      - recsys-net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+  
+  # Update worker service
+  recsys-lite-worker:
+    image: recsys-lite-worker:${VERSION:-latest}
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.worker
+      args:
+        - BUILD_ENV=production
+    volumes:
+      - recsys-data:/data
+      - recsys-models:/app/model_artifacts
+    environment:
+      - DB_PATH=/data/recsys.db
+      - MODEL_PATH=/app/model_artifacts/als
+      - UPDATE_INTERVAL=60
+      - LOG_LEVEL=INFO
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+    depends_on:
+      - recsys-lite-api
+    networks:
+      - recsys-net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  recsys-net:
+    driver: bridge
+
+volumes:
+  recsys-data:
+    driver: local
+  recsys-models:
+    driver: local

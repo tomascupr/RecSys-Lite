@@ -1,22 +1,54 @@
 version: '3.8'
 
 services:
-  recsys-lite:
+  # API service
+  recsys-lite-api:
     build:
       context: ..
       dockerfile: docker/Dockerfile
     volumes:
+      # Mount data directories
       - ../data:/data
       - ../model_artifacts:/app/model_artifacts
+      # Mount incremental data directory for updates
+      - ../data/incremental:/data/incremental
     ports:
       - "8000:8000"
     environment:
       - DB_PATH=/data/recsys.db
       - MODEL_PATH=/app/model_artifacts
+      - LOG_LEVEL=INFO
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8000/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 5s
     restart: unless-stopped
+    networks:
+      - recsys-net
+  
+  # Update worker service
+  recsys-lite-worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.worker
+    volumes:
+      # Mount same data directories for consistency
+      - ../data:/data
+      - ../model_artifacts:/app/model_artifacts
+      - ../data/incremental:/data/incremental
+    environment:
+      - DB_PATH=/data/recsys.db
+      - MODEL_PATH=/app/model_artifacts/als
+      - UPDATE_INTERVAL=60
+      - LOG_LEVEL=INFO
+    restart: unless-stopped
+    depends_on:
+      - recsys-lite-api
+    networks:
+      - recsys-net
+
+networks:
+  recsys-net:
+    driver: bridge

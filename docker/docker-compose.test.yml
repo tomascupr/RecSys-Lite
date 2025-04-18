@@ -7,6 +7,66 @@ services:
       dockerfile: docker/Dockerfile.test
     volumes:
       - ../:/app
+      - ../data:/data
+      - ../model_artifacts:/app/model_artifacts
     environment:
       - PYTHONPATH=/app
-    command: pytest -xvs tests/
+      - DB_PATH=/data/test.db
+      - MODEL_PATH=/app/model_artifacts
+      - PYTEST_ADDOPTS="-v --cov=src --cov-report=term --cov-report=xml"
+    command: >
+      bash -c "
+        mkdir -p /data/incremental &&
+        python -m pytest tests/ -xvs
+      "
+    networks:
+      - test-net
+
+  lint:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.test
+    volumes:
+      - ../:/app
+    environment:
+      - PYTHONPATH=/app
+    command: >
+      bash -c "
+        ruff . &&
+        black --check src/ tests/ &&
+        isort --check-only src/ tests/ &&
+        mypy src/
+      "
+    networks:
+      - test-net
+
+  image-size-check:
+    image: alpine:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    entrypoint: >
+      sh -c "
+        apk add --no-cache docker-cli &&
+        docker image ls recsys-lite-api:latest --format '{{.Size}}' | 
+        awk '{if ($1 ~ /MB/ && substr($1, 0, length($1)-2) > 1000) exit 1; else if ($1 ~ /GB/) exit 1; else exit 0}'
+      "
+    depends_on:
+      - build-images
+
+  build-images:
+    image: docker:23.0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ../:/app
+    working_dir: /app
+    command: >
+      sh -c "
+        docker build -t recsys-lite-api:latest -f docker/Dockerfile . &&
+        docker build -t recsys-lite-worker:latest -f docker/Dockerfile.worker .
+      "
+    networks:
+      - test-net
+
+networks:
+  test-net:
+    driver: bridge

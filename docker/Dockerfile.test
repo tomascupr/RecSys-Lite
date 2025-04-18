@@ -1,26 +1,32 @@
-FROM python:3.11-slim
+FROM python:3.11-slim-bullseye
 
 WORKDIR /app
 
-# Install Poetry
-RUN pip install poetry==1.6.1
+# Install system dependencies and Poetry in a single layer
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    build-essential \
+    gcc \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir poetry==1.6.1 \
+    && poetry config virtualenvs.create false
 
-# Copy pyproject.toml and poetry.lock* files (if available)
-COPY pyproject.toml ./
-COPY poetry.lock* ./
+# Copy just pyproject.toml and poetry.lock first to leverage Docker layer caching
+COPY pyproject.toml poetry.lock* ./
 
-# Configure poetry to not create a virtual environment
-RUN poetry config virtualenvs.create false
-
-# Install dependencies
+# Install all dependencies including development dependencies
 RUN poetry install --no-interaction --no-ansi
 
-# Copy test files
-COPY tests/ /app/tests/
-COPY src/ /app/src/
+# Create necessary directories
+RUN mkdir -p /data/incremental /app/model_artifacts /app/tests /app/src
 
-# Set working directory
-WORKDIR /app
+# Set environment variables
+ENV PYTHONPATH=/app \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    TEST_MODE=1
 
-# Default command
-CMD ["pytest", "-xvs", "tests/"]
+# Default command runs tests
+CMD ["python", "-m", "pytest", "-xvs", "tests/"]

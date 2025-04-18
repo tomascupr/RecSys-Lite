@@ -1,0 +1,60 @@
+# Git
+.git
+.gitignore
+.github
+
+# Python
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.pytest_cache
+**/.coverage
+**/htmlcov
+**/.tox
+**/.nox
+**/.mypy_cache
+**/.ruff_cache
+**/*.egg-info
+**/dist
+**/build
+
+# Environment
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Docker
+.dockerignore
+docker-compose*.yml
+Dockerfile*
+
+# Data and artifacts (mounted as volumes)
+data/
+model_artifacts/
+
+# Documentation
+docs/
+*.md
+LICENSE
+
+# Node.js (widget)
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+coverage/
+storybook-static/
+
+# Editor directories and files
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+# OS specific
+.DS_Store
+Thumbs.db

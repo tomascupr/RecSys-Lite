@@ -1,0 +1,39 @@
+# Use the same base image as the API for consistency
+FROM python:3.11-slim-bullseye
+
+WORKDIR /app
+
+# Install only necessary system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    build-essential \
+    gcc \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir poetry==1.6.1 \
+    && poetry config virtualenvs.create false
+
+# Copy only poetry configuration files first to leverage caching
+COPY pyproject.toml poetry.lock* ./
+
+# Install production dependencies only, exclude API/web specific packages
+RUN poetry install --no-dev --without web --no-interaction --no-ansi
+
+# Copy application code
+COPY src ./src
+
+# Clean up to reduce image size
+RUN find /usr/local/lib/python3.11 -name "__pycache__" -type d -exec rm -rf {} +
+
+# Create necessary directories
+RUN mkdir -p /data/incremental /app/model_artifacts
+
+# Set environment variables
+ENV PYTHONPATH=/app \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# Start update worker
+CMD ["python", "-m", "src.recsys_lite.cli", "worker", \
+     "--model-dir", "${MODEL_PATH}", \
+     "--db", "${DB_PATH}", \
+     "--interval", "${UPDATE_INTERVAL:-60}"]

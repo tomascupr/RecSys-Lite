@@ -1,0 +1,30 @@
+# Development files
+node_modules/
+.storybook/
+src/
+public/
+.vscode/
+.idea/
+
+# Build files
+.eslintrc.cjs
+.gitignore
+vite.config.ts
+tsconfig.json
+tsconfig.node.json
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+
+# Storybook
+storybook-static/

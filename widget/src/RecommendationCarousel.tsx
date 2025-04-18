@@ -22,6 +22,8 @@ export interface RecommendationCarouselProps {
   cardClassName?: string;
   onItemClick?: (item: Recommendation) => void;
   fetchItemDetails?: (itemIds: string[]) => Promise<Record<string, Partial<Recommendation>>>;
+  // For testing and Storybook
+  testRecommendations?: Recommendation[];
 }
 
 export const RecommendationCarousel: React.FC<RecommendationCarouselProps> = ({
@@ -34,6 +36,7 @@ export const RecommendationCarousel: React.FC<RecommendationCarouselProps> = ({
   cardClassName = '',
   onItemClick,
   fetchItemDetails,
+  testRecommendations,
 }) => {
   const [emblaRef, emblaApi] = useEmblaCarousel({ 
     loop: false,
@@ -41,11 +44,18 @@ export const RecommendationCarousel: React.FC<RecommendationCarouselProps> = ({
     slidesToScroll: 1,
   });
   
-  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [recommendations, setRecommendations] = useState<Recommendation[]>(testRecommendations || []);
+  const [isLoading, setIsLoading] = useState<boolean>(!testRecommendations);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // If test recommendations are provided, use them instead of making a network request
+    if (testRecommendations) {
+      setRecommendations(testRecommendations);
+      setIsLoading(false);
+      return;
+    }
+
     const fetchRecommendations = async () => {
       try {
         setIsLoading(true);
@@ -80,7 +90,7 @@ export const RecommendationCarousel: React.FC<RecommendationCarouselProps> = ({
     };
     
     fetchRecommendations();
-  }, [apiUrl, userId, count, fetchItemDetails]);
+  }, [apiUrl, userId, count, fetchItemDetails, testRecommendations]);
 
   return (
     <div className={cn('w-full', className)}>
@@ -131,7 +141,7 @@ export const RecommendationCarousel: React.FC<RecommendationCarouselProps> = ({
                 </div>
                 <div className="p-3">
                   <h3 className="font-medium line-clamp-2">{item.title || item.item_id}</h3>
-                  {item.price && (
+                  {item.price !== undefined && (
                     <p className="mt-1 font-bold">${item.price.toFixed(2)}</p>
                   )}
                   {item.category && (

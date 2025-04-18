@@ -1,13 +1,13 @@
 """Base model class for RecSys-Lite."""
 
-from pathlib import Path
 import pickle
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Tuple, Type, Union, Protocol
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Protocol, Tuple, Type, Union
 
 import numpy as np
-from numpy.typing import NDArray
 import scipy.sparse as sp
+from numpy.typing import NDArray
 
 
 class ModelPersistenceMixin:

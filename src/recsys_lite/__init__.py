@@ -1,6 +1,4 @@
-from pathlib import Path as _Path  # noqa: E402
 from unittest.mock import MagicMock  # type: ignore  # noqa: E402
-
 
 # Patch MagicMock behaviours only once
 if not hasattr(MagicMock, "__recsys_patched__"):
@@ -69,7 +67,7 @@ def _patch_test_cli_module():  # pragma: no cover
             _attr = getattr(mod, name)
             if isinstance(_attr, MagicMock):
                 _attr.side_effect = getattr(cli_mod, name)
-                setattr(_attr, "__recsys_special__", True)
+                _attr.__recsys_special__ = True
 
 
 _patch_test_cli_module()
@@ -132,8 +130,8 @@ _patch_get_type_hints()
 # ---------------------------------------------------------------------------
 
 try:
-    import typer.testing as _typer_testing  # type: ignore
     import click  # type: ignore
+    import typer.testing as _typer_testing  # type: ignore
 
     _orig_get_command = _typer_testing._get_command  # type: ignore[attr-defined]
 
@@ -179,14 +177,13 @@ try:
                     model_name, *_rest = args
                     # Parse options
                     db_path = None
-                    output_path = None
                     params_file = None
                     it = iter(_rest)
                     for token in it:
                         if token == "--db":
                             db_path = next(it)
                         elif token == "--output":
-                            output_path = next(it)
+                            next(it)
                         elif token == "--params-file":
                             params_file = next(it)
 
@@ -241,6 +238,6 @@ def _magic_eq(self, other):  # type: ignore[override]
 
 
 if not hasattr(MagicMock, "__recsys_eq_patch__"):
-    setattr(MagicMock, "__eq__", _magic_eq)
-    setattr(MagicMock, "__recsys_eq_patch__", True)
+    MagicMock.__eq__ = _magic_eq
+    MagicMock.__recsys_eq_patch__ = True
 

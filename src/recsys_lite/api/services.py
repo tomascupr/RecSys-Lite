@@ -3,8 +3,8 @@
 from typing import Any, Dict, List, Optional, Tuple, cast
 
 import numpy as np
-from numpy.typing import NDArray
 import scipy.sparse as sp
+from numpy.typing import NDArray
 
 from recsys_lite.api.errors import ItemNotFoundError, ModelNotInitializedError, UserNotFoundError
 from recsys_lite.models.base import BaseRecommender, VectorProvider
@@ -237,7 +237,10 @@ class RecommendationService:
         )
         
         # Convert item indices to IDs
-        item_ids = [self.reverse_item_mapping.get(int(idx), f"unknown_{idx}") for idx in item_indices]
+        item_ids = [
+            self.reverse_item_mapping.get(int(idx), f"unknown_{idx}") 
+            for idx in item_indices
+        ]
         
         scores_list = [float(score) for score in scores]
         return item_ids, scores_list, self._get_item_metadata(item_ids, item_data)
@@ -298,7 +301,8 @@ class RecommendationService:
         )
         
         # Search for similar items
-        distances, indices = self.faiss_index.search(item_vector, k + 1)  # +1 to account for the item itself
+        # +1 to account for the item itself
+        distances, indices = self.faiss_index.search(item_vector, k + 1)
         
         # Process results
         item_ids = []

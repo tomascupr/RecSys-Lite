@@ -13,7 +13,9 @@ from recsys_lite.models.base import BaseRecommender, ModelRegistry
 
 logger = logging.getLogger("recsys-lite.api")
 
-def load_mappings(model_dir: Path) -> Tuple[Dict[str, int], Dict[str, int], Dict[int, str], Dict[int, str]]:
+def load_mappings(model_dir: Path) -> Tuple[
+    Dict[str, int], Dict[str, int], Dict[int, str], Dict[int, str]
+]:
     """Load user and item mappings.
     
     Args:
@@ -123,7 +125,10 @@ def load_item_data(data_dir: Path) -> Dict[str, Dict[str, Any]]:
     logger.info("No item data found, using empty dictionary")
     return {}
 
-def setup_recommendation_service(model_dir: Path, data_dir: Optional[Path] = None) -> RecommendationService:
+def setup_recommendation_service(
+    model_dir: Path, 
+    data_dir: Optional[Path] = None
+) -> RecommendationService:
     """Set up recommendation service.
     
     Args:
@@ -137,10 +142,11 @@ def setup_recommendation_service(model_dir: Path, data_dir: Optional[Path] = Non
     data_path = Path(data_dir) if data_dir else model_path.parent.parent / "data"
     
     # Load model components
-    user_mapping, item_mapping, reverse_user_mapping, reverse_item_mapping = load_mappings(model_path)
+    (user_mapping, item_mapping, 
+     reverse_user_mapping, reverse_item_mapping) = load_mappings(model_path)
     model, model_type = load_model(model_path)
     faiss_index = load_faiss_index(model_path)
-    item_metadata = load_item_data(data_path)
+    load_item_data(data_path)
     
     # Create empty user-item matrix for tracking interactions
     user_item_matrix = sp.csr_matrix((len(user_mapping), len(item_mapping)))

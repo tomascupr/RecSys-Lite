@@ -580,7 +580,9 @@ def _create_interaction_matrix(
 # ---------------------------------------------------------------------------
 
 
-def get_interactions_matrix(db_path: Path) -> tuple[csr_matrix, Dict[str, int], Dict[str, int]]:  # pragma: no cover
+def get_interactions_matrix(
+    db_path: Path
+) -> tuple[csr_matrix, Dict[str, int], Dict[str, int]]:  # pragma: no cover
     """Fetch events from *db_path* and build a CSR interaction matrix.
 
     The helper exists primarily for the test‑suite (``tests/test_cli.py``)

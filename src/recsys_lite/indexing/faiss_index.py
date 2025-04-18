@@ -1,8 +1,8 @@
 """Faiss index builder for fast similarity search."""
 
-from pathlib import Path
 import pickle
-from typing import Dict, List, Optional, Tuple, Union
+from pathlib import Path
+from typing import List, Optional, Tuple, Union
 
 import faiss
 import numpy as np

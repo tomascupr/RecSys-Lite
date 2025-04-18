@@ -4,12 +4,11 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-import numpy as np
-from numpy.typing import NDArray
-
 import duckdb
 import faiss
+import numpy as np
 import scipy.sparse as sp
+from numpy.typing import NDArray
 
 
 class UpdateWorker:

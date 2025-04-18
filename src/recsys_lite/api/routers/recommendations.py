@@ -120,7 +120,8 @@ async def similar_items(
                 price=metadata.get("price"),
                 img_url=metadata.get("img_url"),
             )
-            for similar_item_id, score, metadata in zip(item_ids, scores, item_metadata, strict=False)
+            for similar_item_id, score, metadata in zip(
+                item_ids, scores, item_metadata, strict=False)
         ]
         
         # Update metrics

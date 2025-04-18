@@ -1,7 +1,7 @@
 """Error handling for RecSys-Lite API."""
 
 import logging
-from typing import Any, Callable, Dict, Optional, Type, TypedDict, cast
+from typing import Callable, Dict, Optional, Type, TypedDict, cast
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
@@ -84,7 +84,10 @@ def add_error_handlers(app: FastAPI) -> None:
         app: FastAPI application
     """
     @app.exception_handler(RequestValidationError)
-    async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    async def validation_exception_handler(
+        request: Request, 
+        exc: RequestValidationError
+    ) -> JSONResponse:
         """Handle validation errors.
         
         Args:

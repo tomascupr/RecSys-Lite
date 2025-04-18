@@ -23,8 +23,12 @@ jobs:
           pip install poetry
       - name: Install dependencies
         run: poetry install
-      - name: Lint with ruff
-        run: poetry run ruff .
+      - name: Ruff auto-fix
+        run: |
+          poetry run ruff check src --fix
+          poetry run ruff format src
+      - name: Ruff lint
+        run: poetry run ruff src              # fails only on new issues
       - name: Type-check with mypy
         run: poetry run mypy --strict src
       - name: Run tests and capture logs

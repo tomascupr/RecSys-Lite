@@ -1,18 +1,18 @@
 """ALS model implementation using implicit library."""
 
-import os
-import pickle
-from typing import Any, Tuple, Union
+from typing import Any, Dict, Tuple, Union
 
 import implicit
 import numpy as np
 import scipy.sparse as sp
 
-from recsys_lite.models.base import BaseRecommender
+from recsys_lite.models.base import BaseRecommender, FactorizationModelMixin
 
 
-class ALSModel(BaseRecommender):
+class ALSModel(BaseRecommender, FactorizationModelMixin):
     """Alternating Least Squares model for collaborative filtering."""
+    
+    model_type = "als"
 
     def __init__(
         self,
@@ -97,26 +97,13 @@ class ALSModel(BaseRecommender):
         self.model.partial_fit_users(user_item_matrix, user_ids)
         self.user_factors = self.model.user_factors
 
-    def get_item_factors(self) -> np.ndarray:
-        """Get item factors matrix.
-
+    def _get_model_state(self) -> Dict[str, Any]:
+        """Get model state for serialization.
+        
         Returns:
-            Item factors matrix
+            Dictionary with model state
         """
-        if self.item_factors is None:
-            return np.array([])  # Return empty array if not initialized
-        return self.item_factors
-
-    def save_model(self, path: str) -> None:
-        """Save model to disk.
-
-        Args:
-            path: Path to save model
-        """
-        os.makedirs(path, exist_ok=True)
-
-        # Save model state
-        model_state = {
+        return {
             "factors": self.model.factors,
             "regularization": self.model.regularization,
             "alpha": self.model.alpha,
@@ -124,19 +111,13 @@ class ALSModel(BaseRecommender):
             "user_factors": self.user_factors,
             "item_factors": self.item_factors,
         }
-
-        with open(os.path.join(path, "als_model.pkl"), "wb") as f:
-            pickle.dump(model_state, f)
-
-    def load_model(self, path: str) -> None:
-        """Load model from disk.
-
+    
+    def _set_model_state(self, model_state: Dict[str, Any]) -> None:
+        """Set model state from deserialized data.
+        
         Args:
-            path: Path to load model from
+            model_state: Dictionary with model state
         """
-        with open(os.path.join(path, "als_model.pkl"), "rb") as f:
-            model_state = pickle.load(f)
-
         # Set model parameters
         self.model.factors = model_state["factors"]
         self.model.regularization = model_state["regularization"]

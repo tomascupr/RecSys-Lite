@@ -1,18 +1,18 @@
 """BPR model implementation using implicit library."""
 
-import os
-import pickle
-from typing import Any, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 import implicit
 import numpy as np
 import scipy.sparse as sp
 
-from recsys_lite.models.base import BaseRecommender
+from recsys_lite.models.base import BaseRecommender, FactorizationModelMixin
 
 
-class BPRModel(BaseRecommender):
+class BPRModel(BaseRecommender, FactorizationModelMixin):
     """Bayesian Personalized Ranking model for collaborative filtering."""
+    
+    model_type = "bpr"
 
     def __init__(
         self,
@@ -96,36 +96,13 @@ class BPRModel(BaseRecommender):
 
         return item_ids, scores
 
-    def get_item_factors(self) -> np.ndarray:
-        """Get item factors matrix.
-
+    def _get_model_state(self) -> Dict[str, Any]:
+        """Get model state for serialization.
+        
         Returns:
-            Item factors matrix
+            Dictionary with model state
         """
-        if self.item_factors is None:
-            return np.array([])  # Return empty array if not initialized
-        return self.item_factors
-
-    def get_user_factors(self) -> np.ndarray:
-        """Get user factors matrix.
-
-        Returns:
-            User factors matrix
-        """
-        if self.user_factors is None:
-            return np.array([])  # Return empty array if not initialized
-        return self.user_factors
-
-    def save_model(self, path: str) -> None:
-        """Save model to disk.
-
-        Args:
-            path: Path to save model
-        """
-        os.makedirs(path, exist_ok=True)
-
-        # Save model state
-        model_state = {
+        return {
             "factors": self.model.factors,
             "learning_rate": self.model.learning_rate,
             "regularization": self.model.regularization,
@@ -133,19 +110,13 @@ class BPRModel(BaseRecommender):
             "user_factors": self.user_factors,
             "item_factors": self.item_factors,
         }
-
-        with open(os.path.join(path, "bpr_model.pkl"), "wb") as f:
-            pickle.dump(model_state, f)
-
-    def load_model(self, path: str) -> None:
-        """Load model from disk.
-
+    
+    def _set_model_state(self, model_state: Dict[str, Any]) -> None:
+        """Set model state from deserialized data.
+        
         Args:
-            path: Path to load model from
+            model_state: Dictionary with model state
         """
-        with open(os.path.join(path, "bpr_model.pkl"), "rb") as f:
-            model_state = pickle.load(f)
-
         # Set model parameters
         self.model.factors = model_state["factors"]
         self.model.learning_rate = model_state["learning_rate"]

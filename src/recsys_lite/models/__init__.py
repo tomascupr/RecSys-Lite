@@ -3,7 +3,12 @@
 import os
 
 from recsys_lite.models.als import ALSModel
-from recsys_lite.models.base import BaseRecommender
+from recsys_lite.models.base import (
+    BaseRecommender, 
+    FactorizationModelMixin, 
+    ModelPersistenceMixin,
+    ModelRegistry
+)
 from recsys_lite.models.bpr import BPRModel
 from recsys_lite.models.item2vec import Item2VecModel
 
@@ -26,8 +31,18 @@ else:
         # Fallback to mock if torch isn't available
         from recsys_lite.models.gru4rec_mock import GRU4Rec
 
+# Register models with the registry
+ModelRegistry.register("als", ALSModel)
+ModelRegistry.register("bpr", BPRModel)
+ModelRegistry.register("item2vec", Item2VecModel)
+ModelRegistry.register("lightfm", LightFMModel)
+ModelRegistry.register("gru4rec", GRU4Rec)
+
 __all__ = [
     "BaseRecommender",
+    "FactorizationModelMixin",
+    "ModelPersistenceMixin",
+    "ModelRegistry",
     "ALSModel",
     "BPRModel",
     "Item2VecModel",

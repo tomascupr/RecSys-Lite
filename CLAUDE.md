@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**IMPORTANT:** Do not include attribution to Claude in the commit message or co-author attribution. Ever.
+
 ## Build Commands
 - Install: `poetry install`
 - Run CLI: `recsys-lite --help`

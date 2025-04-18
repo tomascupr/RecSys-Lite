@@ -2,11 +2,13 @@
 
 import time
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
+
+import numpy as np
+from numpy.typing import NDArray
 
 import duckdb
 import faiss
-import numpy as np
 import scipy.sparse as sp
 
 
@@ -62,7 +64,7 @@ class UpdateWorker:
                 print(f"Error in update worker: {e}")
                 time.sleep(self.interval)
 
-    def _get_new_events(self) -> tuple:
+    def _get_new_events(self) -> Tuple[sp.csr_matrix, NDArray[np.int_], List[str]]:
         """Get new events from the database and incremental parquet files.
 
         Returns:
@@ -147,7 +149,7 @@ class UpdateWorker:
 
         return user_item_matrix, user_ids, new_items
 
-    def _update_user_factors(self, user_item_matrix: sp.csr_matrix, user_ids: np.ndarray) -> None:
+    def _update_user_factors(self, user_item_matrix: sp.csr_matrix, user_ids: NDArray[np.int_]) -> None:
         """Update user factors for new events.
 
         Args:

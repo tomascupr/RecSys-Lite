@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Tuple, Union
 
 import numpy as np
+from numpy.typing import NDArray
 import scipy.sparse as sp
 
 
@@ -27,7 +28,7 @@ class BaseRecommender(ABC):
         user_items: sp.csr_matrix,
         n_items: int = 10,
         **kwargs: Any,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> Tuple[NDArray[np.int_], NDArray[np.float32]]:
         """Generate recommendations for a user.
 
         Args:

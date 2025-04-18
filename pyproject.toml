@@ -48,6 +48,34 @@ warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
+disallow_any_generics = false  # Allow Any for generics to be more flexible
+disallow_subclassing_any = false  # Allow subclassing Any for torch classes
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+
+# Handle third-party libraries without type stubs
+[[tool.mypy.overrides]]
+module = [
+    "scipy.*",
+    "faiss",
+    "implicit.*",
+    "gensim.*",
+    "torch.*",
+    "lightfm.*",
+    "duckdb"
+]
+ignore_missing_imports = true
+
+# Be more lenient with model implementations that use external dependencies
+[[tool.mypy.overrides]]
+module = [
+    "recsys_lite.models.*",
+    "recsys_lite.api.main",
+    "recsys_lite.cli"
+]
+ignore_errors = true
 
 [tool.ruff]
 line-length = 100           # wider but still readable

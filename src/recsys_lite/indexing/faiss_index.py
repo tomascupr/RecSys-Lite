@@ -54,15 +54,16 @@ class FaissIndexBuilder:
         # Set distance metric
         if self.metric == "inner_product":
             metric_param = faiss.METRIC_INNER_PRODUCT
-            # Normalize vectors for inner product (cosine similarity)
-            if self.metric == "cosine":
-                faiss.normalize_L2(self.vectors)
+        elif self.metric == "cosine":
+            metric_param = faiss.METRIC_INNER_PRODUCT
+            # Normalize vectors for cosine similarity using inner product
+            faiss.normalize_L2(self.vectors)
         else:  # L2 distance
             metric_param = faiss.METRIC_L2
         
         # Create index based on type
         if self.index_type == "Flat":
-            index = faiss.IndexFlatIP(self.dim) if self.metric == "inner_product" else faiss.IndexFlatL2(self.dim)
+            index = faiss.IndexFlatIP(self.dim) if self.metric in ["inner_product", "cosine"] else faiss.IndexFlatL2(self.dim)
         elif self.index_type == "IVF_Flat":
             quantizer = faiss.IndexFlatL2(self.dim)
             index = faiss.IndexIVFFlat(quantizer, self.dim, self.nlist, metric_param)

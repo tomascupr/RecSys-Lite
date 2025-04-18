@@ -1,12 +1,15 @@
 """GRU4Rec session-based recommendation model using PyTorch."""
 
-from typing import Dict, Any, Tuple, Optional, List
+from typing import Dict, Any, Tuple, Optional, List, Union
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
+import scipy.sparse as sp
+
+from recsys_lite.models.base import BaseRecommender
 
 
 class SessionDataset(Dataset):
@@ -124,7 +127,7 @@ class GRU4RecModel(nn.Module):
         return torch.zeros(self.n_layers, batch_size, self.hidden_size, device=self.embedding.weight.device)
 
 
-class GRU4Rec:
+class GRU4Rec(BaseRecommender):
     """GRU4Rec wrapper class for session-based recommendation."""
     
     def __init__(
@@ -167,7 +170,29 @@ class GRU4Rec:
         self.criterion = nn.CrossEntropyLoss()
         self.optimizer = optim.Adam(self.model.parameters(), lr=learning_rate)
         
-    def fit(self, sessions: List[List[int]]) -> Dict[str, List[float]]:
+    def fit(self, user_item_matrix: sp.csr_matrix, **kwargs: Any) -> None:
+        """Fit the model on user-item interaction data.
+        
+        Args:
+            user_item_matrix: Sparse user-item interaction matrix
+            **kwargs: Additional model-specific parameters
+        """
+        # GRU4Rec needs sessions, not a matrix
+        # If sessions are provided in kwargs, use those
+        sessions = kwargs.get("sessions", [])
+        if not sessions:
+            # If no sessions provided, try to create simple ones from matrix
+            # This is not optimal but provides compatibility with BaseRecommender
+            sessions = []
+            for user_idx in range(user_item_matrix.shape[0]):
+                items = user_item_matrix[user_idx].indices.tolist()
+                if items:
+                    sessions.append(items)
+        
+        # Call the original fit method with sessions
+        self._fit_sessions(sessions)
+        
+    def _fit_sessions(self, sessions: List[List[int]]) -> Dict[str, List[float]]:
         """Train the model on session data.
         
         Args:
@@ -216,6 +241,29 @@ class GRU4Rec:
             print(f"Epoch {epoch+1}/{self.n_epochs}, Loss: {avg_loss:.4f}")
             
         return metrics
+    
+    def recommend(
+        self, 
+        user_id: Union[int, str], 
+        user_items: sp.csr_matrix, 
+        n_items: int = 10, 
+        **kwargs: Any
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """Generate recommendations for a user.
+        
+        Args:
+            user_id: User ID
+            user_items: Sparse user-item interaction matrix
+            n_items: Number of recommendations to return
+            **kwargs: Additional model-specific parameters
+            
+        Returns:
+            Tuple of (item_ids, scores)
+        """
+        # For GRU4Rec, we need a session, not just a user ID
+        # This is a simplified implementation that assumes the session is passed in kwargs
+        session = kwargs.get("session", [])
+        return self.predict_next_items(session, n_items)
     
     def predict_next_items(
         self, 

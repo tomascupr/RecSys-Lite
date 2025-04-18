@@ -52,13 +52,15 @@ def create_app(model_dir: Union[str, Path] = "model_artifacts/als") -> FastAPI:
     # Global variables
     user_mapping = {}
     item_mapping = {}
+    reverse_user_mapping = {}
+    reverse_item_mapping = {}
     item_data = {}
     faiss_index = None
     
     @app.on_event("startup")
     async def startup_event() -> None:
         """Load model artifacts on startup."""
-        nonlocal user_mapping, item_mapping, faiss_index, item_data
+        nonlocal user_mapping, item_mapping, reverse_user_mapping, reverse_item_mapping, faiss_index, item_data
         
         # Load user and item mappings
         try:
@@ -68,12 +70,15 @@ def create_app(model_dir: Union[str, Path] = "model_artifacts/als") -> FastAPI:
             with open(model_dir / "item_mapping.json", "r") as f:
                 item_mapping = json.load(f)
                 
-            # Create reverse mappings
+            # Create reverse mappings (for efficient lookup)
             reverse_user_mapping = {int(v): k for k, v in user_mapping.items()}
             reverse_item_mapping = {int(v): k for k, v in item_mapping.items()}
             
+            # Store reverse mappings in globals
+            nonlocal reverse_user_mapping, reverse_item_mapping
+            
             # Load Faiss index
-            index_builder = FaissIndexBuilder.load(model_dir / "faiss_index")
+            index_builder = FaissIndexBuilder.load(str(model_dir / "faiss_index"))
             faiss_index = index_builder.index
             
             # Load item data if available
@@ -81,6 +86,9 @@ def create_app(model_dir: Union[str, Path] = "model_artifacts/als") -> FastAPI:
             if item_data_path.exists():
                 with open(item_data_path, "r") as f:
                     item_data = json.load(f)
+            else:
+                # Create empty dictionary if file doesn't exist
+                item_data = {}
         except Exception as e:
             print(f"Error loading model artifacts: {e}")
             raise
@@ -124,8 +132,8 @@ def create_app(model_dir: Union[str, Path] = "model_artifacts/als") -> FastAPI:
             if idx == -1:  # Faiss returns -1 for no results
                 continue
                 
-            # Get item ID from index
-            item_id = list(item_mapping.keys())[list(item_mapping.values()).index(idx)]
+            # Get item ID from index using reverse mapping
+            item_id = reverse_item_mapping.get(int(idx), f"unknown_{idx}")
             
             # Get item data if available
             item_info = {}
@@ -186,8 +194,8 @@ def create_app(model_dir: Union[str, Path] = "model_artifacts/als") -> FastAPI:
             if idx == -1:  # Faiss returns -1 for no results
                 continue
                 
-            # Get item ID from index
-            similar_item_id = list(item_mapping.keys())[list(item_mapping.values()).index(idx)]
+            # Get item ID from index using reverse mapping
+            similar_item_id = reverse_item_mapping.get(int(idx), f"unknown_{idx}")
             
             # Get item data if available
             item_info = {}

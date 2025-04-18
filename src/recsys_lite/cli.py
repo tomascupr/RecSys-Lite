@@ -5,7 +5,7 @@ import logging
 import os
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union, Any
+from typing import Dict, List, Optional, Tuple, Union, Any, Type, cast
 
 import duckdb
 import numpy as np
@@ -14,7 +14,7 @@ import typer
 from scipy.sparse import csr_matrix
 
 from recsys_lite.ingest import ingest_data
-from recsys_lite.models import ALSModel, BPRModel, GRU4Rec, Item2VecModel, LightFMModel
+from recsys_lite.models import BaseRecommender, ALSModel, BPRModel, GRU4Rec, Item2VecModel, LightFMModel
 from recsys_lite.optimization import OptunaOptimizer
 from recsys_lite.indexing import FaissIndexBuilder
 
@@ -111,11 +111,13 @@ def train(
     test_matrix = _create_interaction_matrix(test_df, user_to_idx, item_to_idx)
     
     # Train model based on type
+    model: BaseRecommender
+    
     if model_type == ModelType.ALS:
-        model = ALSModel(**params)
+        model = cast(BaseRecommender, ALSModel(**params))
         model.fit(train_matrix)
     elif model_type == ModelType.BPR:
-        model = BPRModel(**params)
+        model = cast(BaseRecommender, BPRModel(**params))
         model.fit(train_matrix)
     elif model_type == ModelType.ITEM2VEC:
         # Create session data for item2vec
@@ -125,10 +127,12 @@ def train(
             if len(user_items) > 1:
                 sessions.append(user_items)
         
-        model = Item2VecModel(**params)
-        model.fit(sessions)
+        model = cast(BaseRecommender, Item2VecModel(**params))
+        # Item2Vec needs special handling for fit
+        if isinstance(model, Item2VecModel):
+            model.fit(train_matrix, user_sessions=sessions)
     elif model_type == ModelType.LIGHTFM:
-        model = LightFMModel(**params)
+        model = cast(BaseRecommender, LightFMModel(**params))
         model.fit(train_matrix)
     elif model_type == ModelType.GRU4REC:
         # Create session data for GRU4Rec
@@ -140,8 +144,10 @@ def train(
                 user_items_idx = [item_to_idx[item] for item in user_items]
                 sessions.append(user_items_idx)
         
-        model = GRU4Rec(n_items=len(unique_items), **params)
-        model.fit(sessions)
+        model = cast(BaseRecommender, GRU4Rec(n_items=len(unique_items), **params))
+        # GRU4Rec needs special handling for fit
+        if isinstance(model, GRU4Rec):
+            model.fit(train_matrix, sessions=sessions)
     
     # Save model and mappings
     output_dir = output / model_type.value
@@ -155,22 +161,26 @@ def train(
         json.dump(item_to_idx, f)
     
     # Create Faiss index for item vectors
+    item_vectors: Optional[np.ndarray] = None
+    
     if model_type in [ModelType.ALS, ModelType.BPR, ModelType.LIGHTFM]:
-        item_vectors = model.get_item_factors()
-        index_builder = FaissIndexBuilder(
-            vectors=item_vectors,
-            ids=list(item_to_idx.keys()),
-            index_type="IVF_Flat",
-        )
-        index_builder.save(output_dir / "faiss_index")
+        # These models use get_item_factors()
+        if hasattr(model, 'get_item_factors'):
+            item_vectors = model.get_item_factors()
     elif model_type == ModelType.ITEM2VEC:
-        item_vectors = model.get_item_vectors_matrix(list(item_to_idx.keys()))
+        # Item2Vec uses get_item_vectors_matrix()
+        if isinstance(model, Item2VecModel):
+            item_vector_keys = list(item_to_idx.keys())
+            item_vectors = model.get_item_vectors_matrix(item_vector_keys)
+            
+    # If we have item vectors, create the index
+    if item_vectors is not None:
         index_builder = FaissIndexBuilder(
             vectors=item_vectors,
             ids=list(item_to_idx.keys()),
             index_type="IVF_Flat",
         )
-        index_builder.save(output_dir / "faiss_index")
+        index_builder.save(str(output_dir / "faiss_index"))
     
     typer.echo(f"Model trained and saved to {output_dir}")
 
@@ -213,6 +223,9 @@ def optimize(
     test_matrix = _create_interaction_matrix(test_df, user_to_idx, item_to_idx)
     
     # Define parameter space based on model type
+    # We need to use Any here to satisfy mypy
+    model_class: Any
+    
     if model_type == ModelType.ALS:
         model_class = ALSModel
         param_space = {
@@ -250,8 +263,10 @@ def optimize(
         # Can't use the standard optimization for Item2Vec due to different input format
         typer.echo("Item2Vec optimization is not implemented. Using default parameters.")
         params = {"vector_size": 100, "window": 5, "min_count": 1, "sg": 1, "epochs": 5}
-        model = Item2VecModel(**params)
-        model.fit(sessions)
+        model = cast(BaseRecommender, Item2VecModel(**params))
+        # Item2Vec needs special handling for fit
+        if isinstance(model, Item2VecModel):
+            model.fit(train_matrix, user_sessions=sessions)
         
         # Save model
         output_dir = output / model_type.value
@@ -271,7 +286,7 @@ def optimize(
             ids=list(item_to_idx.keys()),
             index_type="IVF_Flat",
         )
-        index_builder.save(output_dir / "faiss_index")
+        index_builder.save(str(output_dir / "faiss_index"))
         
         typer.echo(f"Item2Vec model trained and saved to {output_dir}")
         return
@@ -287,7 +302,8 @@ def optimize(
         
         # Can't use the standard optimization for GRU4Rec due to different input format
         typer.echo("GRU4Rec optimization is not implemented. Using default parameters.")
-        params = {
+        # Make sure all numeric parameters are the right type for mypy
+        gru_params: Dict[str, Any] = {
             "hidden_size": 100, 
             "n_layers": 1, 
             "dropout": 0.1, 
@@ -295,9 +311,12 @@ def optimize(
             "learning_rate": 0.001, 
             "n_epochs": 10,
             "n_items": len(unique_items),
+            "use_cuda": False,
         }
-        model = GRU4Rec(**params)
-        model.fit(sessions)
+        model = cast(BaseRecommender, GRU4Rec(**gru_params))
+        # GRU4Rec needs special handling for fit
+        if isinstance(model, GRU4Rec):
+            model.fit(train_matrix, sessions=sessions)
         
         # Save model
         output_dir = output / model_type.value
@@ -359,7 +378,7 @@ def optimize(
         ids=list(item_to_idx.keys()),
         index_type="IVF_Flat",
     )
-    index_builder.save(output_dir / "faiss_index")
+    index_builder.save(str(output_dir / "faiss_index"))
     
     typer.echo(f"Best parameters: {best_params}")
     typer.echo(f"Best score ({metric.value}): {optimizer.best_value}")
@@ -403,27 +422,31 @@ def worker(
     model_type = os.path.basename(model_dir)
     
     # Load model
+    model: BaseRecommender
     if model_type == "als":
         from recsys_lite.models import ALSModel
-        model = ALSModel()
+        model = cast(BaseRecommender, ALSModel())
         # TODO: Load model state
     elif model_type == "bpr":
         from recsys_lite.models import BPRModel
-        model = BPRModel()
+        model = cast(BaseRecommender, BPRModel())
         # TODO: Load model state
     else:
         typer.echo(f"Unsupported model type for incremental updates: {model_type}")
         return
     
     # Load Faiss index
-    index_builder = FaissIndexBuilder.load(model_dir / "faiss_index")
+    index_builder = FaissIndexBuilder.load(str(model_dir / "faiss_index"))
     
     # Create update worker
+    # Convert index_to_id to the expected type Dict[int, str]
+    item_id_map = {int(k): str(v) for k, v in index_builder.index_to_id.items()}
+    
     worker = UpdateWorker(
         db_path=db,
         model=model,
         faiss_index=index_builder.index,
-        item_id_map=index_builder.index_to_id,
+        item_id_map=item_id_map,
         interval=interval,
     )
     
@@ -454,7 +477,9 @@ def gdpr(
         # Get item details for items the user interacted with
         item_ids = events_df["item_id"].tolist()
         if item_ids:
-            items_sql = f"SELECT * FROM items WHERE item_id IN ({', '.join([f'\\'{item}\\'' for item in item_ids])})"
+            quoted_items = [f"'{item}'" for item in item_ids]
+            items_list = ", ".join(quoted_items)
+            items_sql = f"SELECT * FROM items WHERE item_id IN ({items_list})"
             items_df = conn.execute(items_sql).fetchdf()
         else:
             items_df = None

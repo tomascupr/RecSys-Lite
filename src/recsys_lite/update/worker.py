@@ -149,7 +149,9 @@ class UpdateWorker:
 
         return user_item_matrix, user_ids, new_items
 
-    def _update_user_factors(self, user_item_matrix: sp.csr_matrix, user_ids: NDArray[np.int_]) -> None:
+    def _update_user_factors(
+        self, user_item_matrix: sp.csr_matrix, user_ids: NDArray[np.int_]
+    ) -> None:
         """Update user factors for new events.
 
         Args:

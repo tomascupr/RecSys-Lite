@@ -91,7 +91,9 @@ class FaissIndexBuilder:
 
         return index
 
-    def search(self, query: NDArray[np.float32], k: int = 10) -> Tuple[NDArray[np.float32], NDArray[np.object_]]:
+    def search(
+        self, query: NDArray[np.float32], k: int = 10
+    ) -> Tuple[NDArray[np.float32], NDArray[np.object_]]:
         """Search for similar items.
 
         Args:
@@ -120,7 +122,9 @@ class FaissIndexBuilder:
 
         return distances, item_ids
 
-    def add_items(self, vectors: NDArray[np.float32], ids: Optional[List[Union[int, str]]] = None) -> None:
+    def add_items(
+        self, vectors: NDArray[np.float32], ids: Optional[List[Union[int, str]]] = None
+    ) -> None:
         """Add new items to the index.
 
         Args:

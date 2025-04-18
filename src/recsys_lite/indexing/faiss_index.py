@@ -243,6 +243,6 @@ class FaissIndexBuilder:
         instance.vectors = np.zeros((len(instance.ids), instance.dim), dtype=np.float32)
 
         # No items were *recently* added for a freshly loaded index.
-        instance._new_ids = []  # type: ignore[attr-defined]
+        instance._new_ids = []
 
         return instance

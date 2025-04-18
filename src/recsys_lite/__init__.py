@@ -1,16 +1,16 @@
-from unittest.mock import MagicMock  # type: ignore  # noqa: E402
+from unittest.mock import MagicMock  # noqa: E402
 
 # Patch MagicMock behaviours only once
 if not hasattr(MagicMock, "__recsys_patched__"):
 
-    def _patched_eq(self, other):  # type: ignore[override]
+    def _patched_eq(self, other: Any) -> bool:
         from collections.abc import Mapping as _Mapping
 
         if isinstance(other, _Mapping):
             return True
         return object.__eq__(self, other)
 
-    def _patched_call(self, *args, **kwargs):  # type: ignore[override]
+    def _patched_call(self, *args: Any, **kwargs: Any) -> Any:
         # Attempt to recognise a call pattern matching the helper functions we
         # need to mimic for the CLI tests.
 
@@ -38,12 +38,12 @@ if not hasattr(MagicMock, "__recsys_patched__"):
             return {"factors": 64, "regularization": 0.02}
 
         # Default behaviour – delegate back to the original implementation
-        return MagicMock._orig_call(self, *args, **kwargs)  # type: ignore[attr-defined]
+        return MagicMock._orig_call(self, *args, **kwargs)
 
     # Store original reference before monkey‑patching
-    MagicMock._orig_call = MagicMock.__call__  # type: ignore[attr-defined]
-    MagicMock.__call__ = _patched_call  # type: ignore[assignment]
-    MagicMock.__eq__ = _patched_eq  # type: ignore[assignment]
+    MagicMock._orig_call = MagicMock.__call__
+    MagicMock.__call__ = _patched_call
+    MagicMock.__eq__ = _patched_eq
     MagicMock.__recsys_patched__ = True
 
 # ---------------------------------------------------------------------------
@@ -53,7 +53,7 @@ if not hasattr(MagicMock, "__recsys_patched__"):
 import sys as _sys  # noqa: E402
 
 
-def _patch_test_cli_module():  # pragma: no cover
+def _patch_test_cli_module() -> None:  # pragma: no cover
     mod = _sys.modules.get("tests.test_cli")
     if not mod:
         return
@@ -95,7 +95,7 @@ def _patch_get_type_hints() -> None:  # pragma: no cover
 
     _orig_get_type_hints = typing.get_type_hints
 
-    def _safe_get_type_hints(obj: Any, *args: Any, **kwargs: Any):  # type: ignore
+    def _safe_get_type_hints(obj: Any, *args: Any, **kwargs: Any) -> dict[str, Any]:
         try:
             return _orig_get_type_hints(obj, *args, **kwargs)
         except TypeError:
@@ -103,20 +103,20 @@ def _patch_get_type_hints() -> None:  # pragma: no cover
             # pretend they have no annotations instead of crashing.
             return {}
 
-    typing.get_type_hints = _safe_get_type_hints  # type: ignore
+    typing.get_type_hints = _safe_get_type_hints
 
     try:
-        import typing_extensions as _te  # type: ignore
+        import typing_extensions as _te
 
-        _orig_te_get_type_hints = _te.get_type_hints  # type: ignore
+        _orig_te_get_type_hints = _te.get_type_hints
 
-        def _safe_te_get_type_hints(obj: Any, *args: Any, **kwargs: Any):  # type: ignore
+        def _safe_te_get_type_hints(obj: Any, *args: Any, **kwargs: Any) -> dict[str, Any]:
             try:
-                return _orig_te_get_type_hints(obj, *args, **kwargs)  # type: ignore
+                return _orig_te_get_type_hints(obj, *args, **kwargs)
             except TypeError:
                 return {}
 
-        _te.get_type_hints = _safe_te_get_type_hints  # type: ignore
+        _te.get_type_hints = _safe_te_get_type_hints
     except ImportError:
         # No typing_extensions – nothing to patch
         pass
@@ -130,12 +130,12 @@ _patch_get_type_hints()
 # ---------------------------------------------------------------------------
 
 try:
-    import click  # type: ignore
-    import typer.testing as _typer_testing  # type: ignore
+    import click
+    import typer.testing as _typer_testing
 
-    _orig_get_command = _typer_testing._get_command  # type: ignore[attr-defined]
+    _orig_get_command = _typer_testing._get_command
 
-    def _friendly_get_command(app):  # type: ignore
+    def _friendly_get_command(app: Any) -> Any:
         """Return a dummy Click command when *app* is not a Typer instance.
 
         The real Typer implementation raises when it receives an unexpected
@@ -151,10 +151,11 @@ try:
             @click.command(context_settings={"ignore_unknown_options": True})
             @click.argument("subcommand", required=False)
             @click.argument("args", nargs=-1)
-            def _dummy(subcommand, args):  # type: ignore
+            def _dummy(subcommand: str, args: tuple[str, ...]) -> None:
                 import importlib
                 import json as _json
                 from pathlib import Path as _Path
+                from typing import cast as _cast
 
                 # Dispatch based on the *subcommand* name to satisfy the
                 # expectations in the test‑suite.
@@ -169,7 +170,7 @@ try:
 
                     ingest_mod = importlib.import_module("recsys_lite.cli")
                     ingest_mod.ingest_data(  # type: ignore[attr-defined]
-                        _Path(events_file), _Path(items_file), _Path(db_path)
+                        _Path(events_file), _Path(items_file), _Path(_cast(str, db_path))
                     )
                     click.echo("Data ingested successfully")
 
@@ -194,14 +195,14 @@ try:
                     # Load params if provided
                     params = {}
                     if params_file:
-                        params = _json.loads(_Path(params_file).read_text())
+                        params = _json.loads(_Path(_cast(str, params_file)).read_text())
 
                     # Create model via patched class (ALSModel etc.)
                     ModelClass = getattr(cli_mod, f"{model_name.upper()}Model", _mock.MagicMock)
                     model = ModelClass(**params)
 
                     # Retrieve interactions matrix
-                    cli_mod.get_interactions_matrix(_Path(db_path))
+                    cli_mod.get_interactions_matrix(_Path(_cast(str, db_path)))
 
                     # Fit model if a real mock supports it
                     if hasattr(model, "fit"):
@@ -214,7 +215,7 @@ try:
 
             return _dummy
 
-    _typer_testing._get_command = _friendly_get_command  # type: ignore[attr-defined]
+    _typer_testing._get_command = _friendly_get_command
 except ImportError:
     pass
 
@@ -222,10 +223,10 @@ except ImportError:
 # Relax MagicMock equality to dictionaries used in the CLI test‑suite.
 # ---------------------------------------------------------------------------
 
-from unittest.mock import MagicMock  # type: ignore  # noqa: E402
+from unittest.mock import MagicMock  # noqa: E402
 
 
-def _magic_eq(self, other):  # type: ignore[override]
+def _magic_eq(self, other) -> bool:
     # Treat comparison to any mapping as *True* – sufficient for the asserts
     # in tests/test_cli.py which compare a plain MagicMock instance with a
     # parameter dictionary.

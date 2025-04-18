@@ -35,21 +35,21 @@ class VectorService:
             try:
                 user_vectors = vector_provider.get_user_vectors([user_idx])
             except Exception:
-                user_vectors = None
+                user_vectors = np.zeros((0, 0), dtype=np.float32)
             # Only accept numpy arrays from providers
             if isinstance(user_vectors, np.ndarray) and user_vectors.size > 0:
-                return user_vectors[0].reshape(1, -1).astype(np.float32)
+                return cast(NDArray[np.float32], user_vectors[0].reshape(1, -1).astype(np.float32))
         
         # Fallback for older model implementations
         if hasattr(model, "get_user_factors"):
             user_factors = model.get_user_factors()
             if user_factors is not None and user_idx < len(user_factors):
-                return user_factors[user_idx].reshape(1, -1).astype(np.float32)
+                return cast(NDArray[np.float32], user_factors[user_idx].reshape(1, -1).astype(np.float32))
         
         # Fallback to random vector
         if vector_size is None:
             vector_size = getattr(model, "factors", 100)
-        return np.random.random(vector_size).astype(np.float32).reshape(1, -1)
+        return cast(NDArray[np.float32], np.random.random(vector_size).astype(np.float32).reshape(1, -1))
     
     def get_item_vector(
         self,
@@ -76,21 +76,21 @@ class VectorService:
                 # Pass the item index to the provider (for factorization models)
                 item_vectors = vector_provider.get_item_vectors([item_idx])
             except Exception:
-                item_vectors = None
+                item_vectors = np.zeros((0, 0), dtype=np.float32)
             # Only accept numpy arrays from providers
             if isinstance(item_vectors, np.ndarray) and item_vectors.size > 0:
-                return item_vectors[0].reshape(1, -1).astype(np.float32)
+                return cast(NDArray[np.float32], item_vectors[0].reshape(1, -1).astype(np.float32))
         
         # Fallback for older model implementations
         if hasattr(model, "get_item_factors"):
             item_factors = model.get_item_factors()
             if item_factors is not None and item_idx < len(item_factors):
-                return item_factors[item_idx].reshape(1, -1).astype(np.float32)
+                return cast(NDArray[np.float32], item_factors[item_idx].reshape(1, -1).astype(np.float32))
         
         # Fallback to random vector
         if vector_size is None:
             vector_size = getattr(model, "factors", 100)
-        return np.random.random(vector_size).astype(np.float32).reshape(1, -1)
+        return cast(NDArray[np.float32], np.random.random(vector_size).astype(np.float32).reshape(1, -1))
 
 
 class RecommendationService:

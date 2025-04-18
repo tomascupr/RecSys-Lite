@@ -68,7 +68,7 @@ jobs:
           echo 'class Dataset: pass\nclass DataLoader: pass' > torch_mock/torch/utils/data/__init__.py
           
           # Create setup.py for the mock
-          cat > torch_mock/setup.py << 'EOF'
+          cat > torch_mock/setup.py << 'EOL'
 from setuptools import setup, find_packages
 
 setup(
@@ -77,7 +77,7 @@ setup(
     packages=find_packages(),
     description="Mock PyTorch package for CI testing"
 )
-EOF
+EOL
           
           # Install the mock torch package
           cd torch_mock && python -m pip install -e . && cd ..

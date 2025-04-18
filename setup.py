@@ -19,7 +19,8 @@ if __name__ == "__main__":
             "typer>=0.8.0",
             "implicit>=0.7.0",
             "gensim>=4.3.1",
-            "lightfm==1.16",
+            # LightFM is installed separately
+            # "lightfm==1.16",
             "optuna>=3.3.0",
             "faiss-cpu>=1.7.4",
             "fastapi>=0.100.0",

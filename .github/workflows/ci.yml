@@ -20,45 +20,44 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
     
-    - name: Install Poetry
-      run: |
-        curl -sSL https://install.python-poetry.org | python3 -
-        poetry --version
-    
     - name: Install system dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y build-essential python3-dev libopenblas-dev
-        
-    - name: Install dependencies
+    
+    - name: Set up Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: 1.5.1
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+        installer-parallel: true
+    
+    - name: Install dependencies with pip
       run: |
-        poetry config virtualenvs.in-project true
-        # Try poetry install first
-        poetry install || {
-          echo "Poetry install failed, trying pip fallback..."
-          # Create a virtualenv if poetry failed
-          python -m venv .venv
-          source .venv/bin/activate
-          # Install with pip
-          pip install -e .
-          pip install pytest mypy ruff black isort pytest-cov
-        }
+        python -m pip install --upgrade pip
+        python -m pip install mypy ruff black isort pytest pytest-cov scipy numpy
+        # Install LightFM directly from pip before other packages
+        # Set environment variable to help LightFM build
+        LIGHTFM_NO_CFLAGS=1 python -m pip install lightfm==1.16
+        # Continue with remaining dependencies via pip first
+        python -m pip install -e .
     
     - name: Lint with ruff
       run: |
-        poetry run ruff .
+        python -m ruff .
     
     - name: Type check with mypy
       run: |
-        poetry run mypy --ignore-missing-imports src
+        python -m mypy --ignore-missing-imports src
     
     - name: Format check with black
       run: |
-        poetry run black --check src
-
+        python -m black --check src
+    
     - name: Run tests
       run: |
-        poetry run pytest --cov=src tests/
+        python -m pytest --cov=src tests/
 
   docker:
     runs-on: ubuntu-latest

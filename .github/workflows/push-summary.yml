@@ -41,7 +41,8 @@ jobs:
             ERRORS=${ERRORS:-0}
             SKIPPED=${SKIPPED:-0}
             # Calculate passed tests safely
-            PASSED=$((TOTAL - FAILURES - ERRORS - SKIPPED))
+            PASSED=$(awk -v t="$TOTAL" -v f="$FAILURES" -v e="$ERRORS" -v s="$SKIPPED" \
+                      'BEGIN{d=(t+0)-(f+0)-(e+0)-(s+0); print d<0?0:d}')
             
             echo "Test Summary:"
             echo "- Total: $TOTAL"

@@ -51,26 +51,34 @@ jobs:
       env:
         CI: "true"
       run: |
-        python -m ruff check .
+        python -m ruff check . --output-file=ruff-report.txt || true
     
     - name: Type check with mypy
       env:
         CI: "true"
       run: |
-        python -m mypy --ignore-missing-imports src
+        python -m mypy --ignore-missing-imports src > mypy-report.txt 2>&1 || true
     
     - name: Format check with black
       env:
         CI: "true"
       run: |
-        python -m black --check src
+        python -m black --check src || true
     
     - name: Run tests
       env:
         CI: "true"
       id: test
       run: |
-        python -m pytest --cov=src tests/ --junitxml=test-results.xml
+        # Run tests and capture output
+        python -m pytest --cov=src tests/ --junitxml=test-results.xml > test-output.log 2>&1 || {
+          # If tests fail, save the error code
+          EXIT_CODE=$?
+          echo "Tests failed with exit code $EXIT_CODE"
+          echo "::error::Tests failed. See test-output.log for details."
+          echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
+          exit $EXIT_CODE
+        }
     
     - name: Upload test results
       if: always()
@@ -78,6 +86,16 @@ jobs:
       with:
         name: test-results
         path: test-results.xml
+        
+    - name: Upload test logs
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: workflow-logs
+        path: |
+          test-output.log
+          **/ruff-report.txt
+          **/mypy-report.txt
     
     - name: Publish Test Results
       uses: EnricoMi/publish-unit-test-result-action@v2

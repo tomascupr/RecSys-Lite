@@ -1,0 +1,142 @@
+name: Auto Fix Tests
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+    branches:
+      - main
+
+jobs:
+  analyze-and-fix:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'failure'
+    permissions:
+      contents: write
+      pull-requests: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          ref: main
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+      
+      - name: Download test results
+        uses: dawidd6/action-download-artifact@v2
+        with:
+          workflow: ci.yml
+          run_id: ${{ github.event.workflow_run.id }}
+          name: test-results
+          path: artifacts
+      
+      - name: Download workflow logs
+        uses: dawidd6/action-download-artifact@v2
+        with:
+          workflow: ci.yml
+          run_id: ${{ github.event.workflow_run.id }}
+          name: workflow-logs
+          path: logs
+          if_no_artifact_found: ignore
+      
+      - name: Create fix branch
+        run: |
+          git config --local user.email "auto-fix-bot@example.com"
+          git config --local user.name "Auto Fix Bot"
+          BRANCH_NAME="auto-fix-$(date +'%Y%m%d-%H%M%S')"
+          git checkout -b $BRANCH_NAME
+          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
+      
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ruff mypy black pytest
+      
+      - name: Analyze and fix issues
+        id: fix
+        run: |
+          MADE_CHANGES=false
+          
+          # Check for test results
+          if [ -f artifacts/test-results.xml ]; then
+            echo "Analyzing test failures from test-results.xml"
+            
+            # Check for import errors
+            IMPORT_ERRORS=$(grep -c "ModuleNotFoundError: No module named" artifacts/test-results.xml || echo "0")
+            if [ "$IMPORT_ERRORS" -gt 0 ]; then
+              echo "Found missing import errors - adding to requirements"
+              # Extract missing modules from test results
+              MISSING_MODULES=$(grep -o "ModuleNotFoundError: No module named '[^']*'" artifacts/test-results.xml | cut -d"'" -f2)
+              
+              for MODULE in $MISSING_MODULES; do
+                echo "Installing missing module: $MODULE"
+                python -m pip install $MODULE
+                # Add to requirements or pyproject.toml
+                if [ -f "pyproject.toml" ]; then
+                  echo "Adding $MODULE to pyproject.toml"
+                  # This is a simplified approach - consider a more robust solution
+                  # for real projects
+                  sed -i "/^python = /a $MODULE = \"*\"" pyproject.toml
+                  MADE_CHANGES=true
+                fi
+              done
+            fi
+          fi
+          
+          # Run Ruff with --fix option to automatically fix linting issues
+          echo "Running Ruff auto-fix"
+          python -m ruff check --fix .
+          if [ $? -eq 0 ]; then
+            echo "Ruff fixed some issues"
+            MADE_CHANGES=true
+          fi
+          
+          # Run Black to format code
+          echo "Running Black to format code"
+          python -m black .
+          if [ $? -eq 0 ]; then
+            echo "Black formatted some files"
+            MADE_CHANGES=true
+          fi
+          
+          # Check if we made any changes
+          git diff --exit-code > /dev/null 2>&1
+          if [ $? -ne 0 ]; then
+            echo "Changes detected, will commit"
+            MADE_CHANGES=true
+          else
+            echo "No changes made by automatic fixing"
+          fi
+          
+          echo "made_changes=$MADE_CHANGES" >> $GITHUB_OUTPUT
+      
+      - name: Commit and push changes
+        if: steps.fix.outputs.made_changes == 'true'
+        run: |
+          git add .
+          git commit -m "Auto-fix: Apply automated fixes for failing tests"
+          git push --set-upstream origin $BRANCH_NAME
+      
+      - name: Create Pull Request
+        if: steps.fix.outputs.made_changes == 'true'
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          title: "Auto-fix: Resolve failing tests"
+          body: |
+            This PR was automatically created to fix failing tests detected in the CI workflow.
+            
+            ### What was fixed:
+            - Applied Ruff automatic fixes for linting issues
+            - Formatted code with Black
+            - Fixed missing dependencies (if any)
+            
+            Please review these changes before merging.
+          base: main
+          branch: ${{ env.BRANCH_NAME }}
+          labels: automated-fix

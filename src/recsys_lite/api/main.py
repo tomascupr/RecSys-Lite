@@ -1,11 +1,9 @@
 """FastAPI service for RecSys-Lite."""
 
 import json
-import os
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
-import faiss
 import numpy as np
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
@@ -120,7 +118,7 @@ def create_app(model_dir: Union[str, Path] = "model_artifacts/als") -> FastAPI:
         
         # Get user vector (implementation depends on model type)
         # For now, let's just use a random vector as a placeholder
-        user_idx = user_mapping[user_id]
+        user_mapping[user_id]
         user_vector = np.random.random(faiss_index.d).astype(np.float32)
         
         # Search for similar items
@@ -128,7 +126,7 @@ def create_app(model_dir: Union[str, Path] = "model_artifacts/als") -> FastAPI:
         
         # Create recommendations
         recommendations = []
-        for i, (score, idx) in enumerate(zip(distances[0], indices[0])):
+        for _i, (score, idx) in enumerate(zip(distances[0], indices[0])):
             if idx == -1:  # Faiss returns -1 for no results
                 continue
                 
@@ -178,7 +176,7 @@ def create_app(model_dir: Union[str, Path] = "model_artifacts/als") -> FastAPI:
             raise HTTPException(status_code=404, detail=f"Item {item_id} not found")
         
         # Get item vector
-        item_idx = item_mapping[item_id]
+        item_mapping[item_id]
         item_vector = np.zeros((1, faiss_index.d), dtype=np.float32)
         
         # This is a placeholder - in a real system, we'd get the actual item vector
@@ -190,7 +188,7 @@ def create_app(model_dir: Union[str, Path] = "model_artifacts/als") -> FastAPI:
         
         # Create recommendations (skip the first result which is the item itself)
         recommendations = []
-        for i, (score, idx) in enumerate(zip(distances[0][1:], indices[0][1:])):
+        for _i, (score, idx) in enumerate(zip(distances[0][1:], indices[0][1:])):
             if idx == -1:  # Faiss returns -1 for no results
                 continue
                 

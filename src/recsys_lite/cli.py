@@ -5,18 +5,24 @@ import logging
 import os
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union, Any, Type, cast
+from typing import Any, Dict, Optional, cast
 
 import duckdb
 import numpy as np
-import scipy.sparse as sp
 import typer
 from scipy.sparse import csr_matrix
 
-from recsys_lite.ingest import ingest_data
-from recsys_lite.models import BaseRecommender, ALSModel, BPRModel, GRU4Rec, Item2VecModel, LightFMModel
-from recsys_lite.optimization import OptunaOptimizer
 from recsys_lite.indexing import FaissIndexBuilder
+from recsys_lite.ingest import ingest_data
+from recsys_lite.models import (
+    ALSModel,
+    BaseRecommender,
+    BPRModel,
+    GRU4Rec,
+    Item2VecModel,
+    LightFMModel,
+)
+from recsys_lite.optimization import OptunaOptimizer
 
 # Configure logging
 logging.basicConfig(
@@ -108,7 +114,7 @@ def train(
     
     # Create user-item matrices
     train_matrix = _create_interaction_matrix(train_df, user_to_idx, item_to_idx)
-    test_matrix = _create_interaction_matrix(test_df, user_to_idx, item_to_idx)
+    _create_interaction_matrix(test_df, user_to_idx, item_to_idx)
     
     # Train model based on type
     model: BaseRecommender
@@ -168,8 +174,9 @@ def train(
         if hasattr(model, 'get_item_factors'):
             item_vectors = model.get_item_factors()
     elif model_type == ModelType.ITEM2VEC:
-        # Item2Vec uses get_item_vectors_matrix()
+        # Item2Vec needs special handling for getting item vectors
         if isinstance(model, Item2VecModel):
+            # Use Item2Vec-specific method - directly access it with the instance
             item_vector_keys = list(item_to_idx.keys())
             item_vectors = model.get_item_vectors_matrix(item_vector_keys)
             
@@ -279,8 +286,9 @@ def optimize(
         with open(output_dir / "item_mapping.json", "w") as f:
             json.dump(item_to_idx, f)
         
-        # Create Faiss index
-        item_vectors = model.get_item_vectors_matrix(list(item_to_idx.keys()))
+        # Create Faiss index - use direct access to Item2Vec specific method
+        # Use type cast to satisfy the type checker
+        item_vectors = cast(Item2VecModel, model).get_item_vectors_matrix(list(item_to_idx.keys()))
         index_builder = FaissIndexBuilder(
             vectors=item_vectors,
             ids=list(item_to_idx.keys()),
@@ -393,6 +401,7 @@ def serve(
 ) -> None:
     """Start the FastAPI server."""
     import uvicorn
+
     from recsys_lite.api.main import create_app
     
     app = create_app(model_dir=model_dir)
@@ -413,10 +422,10 @@ def worker(
     
     # Load model ID mappings
     with open(model_dir / "user_mapping.json", "r") as f:
-        user_mapping = json.load(f)
+        json.load(f)
     
     with open(model_dir / "item_mapping.json", "r") as f:
-        item_mapping = json.load(f)
+        json.load(f)
     
     # Determine model type from directory name
     model_type = os.path.basename(model_dir)
@@ -466,7 +475,7 @@ def gdpr(
         typer.echo(f"Deleting data for user {user_id}")
         conn = duckdb.connect(str(db))
         conn.execute(f"DELETE FROM events WHERE user_id = '{user_id}'")
-        typer.echo(f"Deleted user data. You should retrain models.")
+        typer.echo("Deleted user data. You should retrain models.")
     elif action == "export-user":
         typer.echo(f"Exporting data for user {user_id}")
         conn = duckdb.connect(str(db))

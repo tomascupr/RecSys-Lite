@@ -1,7 +1,6 @@
 """Data ingestion functionality for RecSys-Lite."""
 
 from pathlib import Path
-from typing import Any
 
 import duckdb
 

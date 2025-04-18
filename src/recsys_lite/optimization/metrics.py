@@ -1,6 +1,6 @@
 """Evaluation metrics for recommendation models."""
 
-from typing import List, Dict, Any, Tuple
+from typing import List
 
 import numpy as np
 
@@ -65,4 +65,4 @@ def ndcg_at_k(
     idcg = np.sum(ideal_relevance / discounts)
     
     # Return NDCG
-    return dcg / idcg
+    return float(dcg / idcg)

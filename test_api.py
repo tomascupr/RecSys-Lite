@@ -1,7 +1,8 @@
 """Test client for the RecSys-Lite API."""
 
+
 import requests
-import json
+
 
 def test_api():
     """Test the API endpoints."""
@@ -20,7 +21,7 @@ def test_api():
     if rec_response.status_code == 200:
         data = rec_response.json()
         print(f"User ID: {data['user_id']}")
-        print(f"Recommendations:")
+        print("Recommendations:")
         for i, rec in enumerate(data['recommendations']):
             print(f"  {i+1}. Item: {rec['item_id']}, Score: {rec['score']:.4f}")
     else:

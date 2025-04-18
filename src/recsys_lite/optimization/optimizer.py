@@ -1,8 +1,7 @@
 """Optuna-based hyperparameter optimization for recommendation models."""
 
-import logging
 import os
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Union
 
 import numpy as np
 import optuna
@@ -61,9 +60,9 @@ class OptunaOptimizer:
         self.seed = seed
         
         # Optuna study
-        self.study = None
-        self.best_params = None
-        self.best_value = None
+        self.study: Optional[optuna.Study] = None
+        self.best_params: Optional[Dict[str, Any]] = None
+        self.best_value: Optional[float] = None
         
     def optimize(
         self,
@@ -112,10 +111,10 @@ class OptunaOptimizer:
                         log=param_spec.get("log", False),
                     )
                 elif param_type == "float":
-                    params[param_name] = trial.suggest_float(
+                    params[param_name] = trial.suggest_float(  # type: ignore
                         param_name,
-                        param_spec["low"],
-                        param_spec["high"],
+                        float(param_spec["low"]),
+                        float(param_spec["high"]),
                         step=param_spec.get("step"),
                         log=param_spec.get("log", False),
                     )
@@ -145,7 +144,7 @@ class OptunaOptimizer:
         self.best_params = self.study.best_params
         if fixed_params:
             self.best_params.update(fixed_params)
-        self.best_value = self.study.best_value
+        self.best_value = float(self.study.best_value)
         
         return self.best_params
     
@@ -218,7 +217,8 @@ class OptunaOptimizer:
         # Return average score across all users
         if not scores:
             return 0.0
-        return np.mean(scores)
+        # Convert numpy float to Python float for type checker
+        return float(np.mean(scores))
     
     def get_best_model(
         self, 

@@ -1,13 +1,12 @@
 """Simple FastAPI service for RecSys-Lite."""
 
-import os
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 import duckdb
 import numpy as np
+import uvicorn
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
-import uvicorn
 
 app = FastAPI(
     title="RecSys-Lite API",
@@ -77,7 +76,7 @@ async def recommend(
     
     # Create recommendations with random scores
     recommendations = []
-    for item_id, price in items:
+    for item_id, _price in items:
         score = np.random.random()  # Random score for demo
         recommendations.append(Recommendation(item_id=item_id, score=float(score)))
     

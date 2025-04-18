@@ -1,7 +1,7 @@
-import pandas as pd
-import numpy as np
 from datetime import datetime, timedelta
-import os
+
+import numpy as np
+import pandas as pd
 
 # Set random seed for reproducibility
 np.random.seed(42)
@@ -60,5 +60,5 @@ events_df.to_parquet('events.parquet', index=False)
 items_df.to_csv('items.csv', index=False)
 
 print(f"Created {n_events} events for {n_users} users and {n_items} items")
-print(f"Events saved to events.parquet")
-print(f"Items saved to items.csv")
+print("Events saved to events.parquet")
+print("Items saved to items.csv")

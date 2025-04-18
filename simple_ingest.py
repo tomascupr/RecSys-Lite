@@ -1,7 +1,9 @@
 """Simple script to ingest data into DuckDB."""
 
-import duckdb
 from pathlib import Path
+
+import duckdb
+
 
 def ingest_data(events_path: Path, items_path: Path, db_path: Path) -> None:
     """Ingest data into DuckDB database.

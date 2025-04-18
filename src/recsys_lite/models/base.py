@@ -1,9 +1,9 @@
 """Base model class for RecSys-Lite."""
 
-import os
+from pathlib import Path
 import pickle
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional, Tuple, Type, Union
+from typing import Any, Dict, List, Optional, Tuple, Type, Union, Protocol
 
 import numpy as np
 from numpy.typing import NDArray
@@ -19,10 +19,12 @@ class ModelPersistenceMixin:
         Args:
             path: Path to save model
         """
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+        save_path = Path(path)
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        
         model_state = self._get_model_state()
         model_filename = f"{self._get_model_type()}_model.pkl"
-        with open(os.path.join(path, model_filename), "wb") as f:
+        with open(save_path / model_filename, "wb") as f:
             pickle.dump(model_state, f)
     
     def load_model(self, path: str) -> None:
@@ -31,8 +33,9 @@ class ModelPersistenceMixin:
         Args:
             path: Path to load model from
         """
+        load_path = Path(path)
         model_filename = f"{self._get_model_type()}_model.pkl"
-        with open(os.path.join(path, model_filename), "rb") as f:
+        with open(load_path / model_filename, "rb") as f:
             model_state = pickle.load(f)
         self._set_model_state(model_state)
     
@@ -64,6 +67,32 @@ class ModelPersistenceMixin:
         pass
 
 
+class VectorProvider(Protocol):
+    """Protocol for models that provide vector representations."""
+    
+    def get_item_vectors(self, item_ids: List[Union[str, int]]) -> np.ndarray:
+        """Get item vectors for specified items.
+        
+        Args:
+            item_ids: List of item IDs
+            
+        Returns:
+            Item vectors matrix
+        """
+        ...
+    
+    def get_user_vectors(self, user_ids: List[Union[str, int]]) -> np.ndarray:
+        """Get user vectors for specified users.
+        
+        Args:
+            user_ids: List of user IDs
+            
+        Returns:
+            User vectors matrix
+        """
+        ...
+
+
 class FactorizationModelMixin:
     """Mixin for models with user and item factors."""
     
@@ -89,6 +118,38 @@ class FactorizationModelMixin:
         if self.user_factors is None:
             return np.array([])
         return self.user_factors
+        
+    def get_item_vectors(self, item_ids: List[Union[str, int]]) -> np.ndarray:
+        """Get item vectors for specified items.
+        
+        Args:
+            item_ids: List of item IDs (indices for factorization models)
+            
+        Returns:
+            Item vectors matrix
+        """
+        if self.item_factors is None:
+            return np.array([])
+        
+        # For factorization models, item_ids are typically indices
+        indices = [int(item_id) for item_id in item_ids if int(item_id) < len(self.item_factors)]
+        return self.item_factors[indices]
+    
+    def get_user_vectors(self, user_ids: List[Union[str, int]]) -> np.ndarray:
+        """Get user vectors for specified users.
+        
+        Args:
+            user_ids: List of user IDs (indices for factorization models)
+            
+        Returns:
+            User vectors matrix
+        """
+        if self.user_factors is None:
+            return np.array([])
+        
+        # For factorization models, user_ids are typically indices
+        indices = [int(user_id) for user_id in user_ids if int(user_id) < len(self.user_factors)]
+        return self.user_factors[indices]
 
 
 class BaseRecommender(ABC, ModelPersistenceMixin):

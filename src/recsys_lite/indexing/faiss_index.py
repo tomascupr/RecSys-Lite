@@ -1,8 +1,8 @@
 """Faiss index builder for fast similarity search."""
 
-import os
+from pathlib import Path
 import pickle
-from typing import List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import faiss
 import numpy as np
@@ -182,11 +182,12 @@ class FaissIndexBuilder:
         Args:
             path: Directory path to save index and metadata
         """
-        os.makedirs(path, exist_ok=True)
+        save_path = Path(path)
+        save_path.mkdir(parents=True, exist_ok=True)
 
         # Save Faiss index
-        index_path = os.path.join(path, "index.faiss")
-        faiss.write_index(self.index, index_path)
+        index_path = save_path / "index.faiss"
+        faiss.write_index(self.index, str(index_path))
 
         # Save metadata
         metadata = {
@@ -199,7 +200,7 @@ class FaissIndexBuilder:
             "nlist": self.nlist,
             "nprobe": self.nprobe,
         }
-        metadata_path = os.path.join(path, "metadata.pkl")
+        metadata_path = save_path / "metadata.pkl"
         with open(metadata_path, "wb") as f:
             pickle.dump(metadata, f)
 
@@ -213,14 +214,16 @@ class FaissIndexBuilder:
         Returns:
             FaissIndexBuilder instance
         """
+        load_path = Path(path)
+        
         # Load metadata
-        metadata_path = os.path.join(path, "metadata.pkl")
+        metadata_path = load_path / "metadata.pkl"
         with open(metadata_path, "rb") as f:
             metadata = pickle.load(f)
 
         # Load Faiss index
-        index_path = os.path.join(path, "index.faiss")
-        index = faiss.read_index(index_path)
+        index_path = load_path / "index.faiss"
+        index = faiss.read_index(str(index_path))
 
         # Create instance
         instance = cls.__new__(cls)

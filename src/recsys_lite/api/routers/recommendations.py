@@ -1,21 +1,17 @@
 """Router for recommendation endpoints."""
 
-from typing import Dict, List
+import logging
+from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 
+from recsys_lite.api.dependencies import get_api_state, get_recommendation_service
+from recsys_lite.api.errors import ItemNotFoundError, ModelNotInitializedError, UserNotFoundError
 from recsys_lite.api.models import Recommendation, RecommendationResponse
 from recsys_lite.api.services import RecommendationService
+from recsys_lite.api.state import APIState
 
-
-# A function that will be a dependency to get the recommendation service
-def get_recommendation_service():
-    """Get recommendation service from app state.
-    
-    This will be injected from the main app through dependency_overrides.
-    """
-    raise NotImplementedError("Recommendation service must be provided by app")
-
+logger = logging.getLogger("recsys-lite.api")
 
 router = APIRouter()
 
@@ -26,6 +22,7 @@ async def recommend(
     k: int = Query(10, description="Number of recommendations to return"),
     use_faiss: bool = Query(True, description="Whether to use Faiss index or direct model"),
     recommendation_service: RecommendationService = Depends(get_recommendation_service),
+    state: APIState = Depends(get_api_state),
 ) -> RecommendationResponse:
     """Get recommendations for a user.
     
@@ -34,11 +31,17 @@ async def recommend(
         k: Number of recommendations to return
         use_faiss: Whether to use Faiss index (faster) or direct model predictions
         recommendation_service: Recommendation service from dependency injection
+        state: API state for metrics
         
     Returns:
         Recommendation response
+    
+    Raises:
+        UserNotFoundError: If user ID is not found
+        ModelNotInitializedError: If recommendation system is not initialized
     """
     try:
+        # Get recommendations
         item_ids, scores, item_metadata = recommendation_service.recommend_for_user(
             user_id=user_id,
             k=k,
@@ -46,10 +49,8 @@ async def recommend(
         )
         
         # Create recommendation objects
-        recommendations = []
-        for item_id, score, metadata in zip(item_ids, scores, item_metadata):
-            # Create recommendation
-            rec = Recommendation(
+        recommendations = [
+            Recommendation(
                 item_id=item_id,
                 score=float(score),
                 title=metadata.get("title"),
@@ -58,18 +59,25 @@ async def recommend(
                 price=metadata.get("price"),
                 img_url=metadata.get("img_url"),
             )
-            recommendations.append(rec)
+            for item_id, score, metadata in zip(item_ids, scores, item_metadata, strict=False)
+        ]
         
+        # Update metrics
+        state.increase_recommendation_count(len(recommendations))
+        
+        # Return response
         return RecommendationResponse(
             user_id=user_id,
             recommendations=recommendations,
         )
-    except HTTPException:
-        # Re-raise HTTP exceptions
+    except (UserNotFoundError, ModelNotInitializedError):
+        # Known errors - re-raise to be handled by exception handlers
         raise
     except Exception as e:
-        # Log error and raise HTTP exception
-        raise HTTPException(status_code=500, detail=f"Error generating recommendations: {str(e)}")
+        # Unexpected errors
+        logger.exception(f"Error generating recommendations: {e}")
+        state.increase_error_count()
+        raise
 
 
 @router.get("/similar-items", response_model=List[Recommendation])
@@ -77,6 +85,7 @@ async def similar_items(
     item_id: str = Query(..., description="Item ID to find similar items for"),
     k: int = Query(10, description="Number of similar items to return"),
     recommendation_service: RecommendationService = Depends(get_recommendation_service),
+    state: APIState = Depends(get_api_state),
 ) -> List[Recommendation]:
     """Get similar items.
     
@@ -84,21 +93,25 @@ async def similar_items(
         item_id: Item ID to find similar items for
         k: Number of similar items to return
         recommendation_service: Recommendation service from dependency injection
+        state: API state for metrics
         
     Returns:
         List of similar items
+    
+    Raises:
+        ItemNotFoundError: If item ID is not found
+        ModelNotInitializedError: If recommendation system is not initialized
     """
     try:
+        # Get similar items
         item_ids, scores, item_metadata = recommendation_service.find_similar_items(
             item_id=item_id,
             k=k
         )
         
         # Create recommendation objects
-        recommendations = []
-        for similar_item_id, score, metadata in zip(item_ids, scores, item_metadata):
-            # Create recommendation
-            rec = Recommendation(
+        recommendations = [
+            Recommendation(
                 item_id=similar_item_id,
                 score=float(score),
                 title=metadata.get("title"),
@@ -107,12 +120,19 @@ async def similar_items(
                 price=metadata.get("price"),
                 img_url=metadata.get("img_url"),
             )
-            recommendations.append(rec)
+            for similar_item_id, score, metadata in zip(item_ids, scores, item_metadata, strict=False)
+        ]
         
+        # Update metrics
+        state.increase_recommendation_count(len(recommendations))
+        
+        # Return response
         return recommendations
-    except HTTPException:
-        # Re-raise HTTP exceptions
+    except (ItemNotFoundError, ModelNotInitializedError):
+        # Known errors - re-raise to be handled by exception handlers
         raise
     except Exception as e:
-        # Log error and raise HTTP exception
-        raise HTTPException(status_code=500, detail=f"Error finding similar items: {str(e)}")
+        # Unexpected errors
+        logger.exception(f"Error finding similar items: {e}")
+        state.increase_error_count()
+        raise

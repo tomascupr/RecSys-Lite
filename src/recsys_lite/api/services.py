@@ -1,96 +1,81 @@
 """Service layer for RecSys-Lite API."""
 
-from typing import Dict, List, Optional, Tuple, Union
-
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 import numpy as np
 import scipy.sparse as sp
-from fastapi import HTTPException
 
-from recsys_lite.models.base import BaseRecommender
-from recsys_lite.indexing import FaissIndexBuilder
+from recsys_lite.api.errors import ItemNotFoundError, ModelNotInitializedError, UserNotFoundError
+from recsys_lite.models.base import BaseRecommender, VectorProvider
 
 
 class VectorService:
     """Service for retrieving vector representations from different model types."""
     
-    @staticmethod
     def get_user_vector(
+        self,
         model: BaseRecommender, 
-        user_idx: int, 
-        model_type: str,
+        user_idx: int,
         vector_size: Optional[int] = None
     ) -> np.ndarray:
-        """Get user vector based on model type.
+        """Get user vector from model.
         
         Args:
             model: Recommendation model
             user_idx: User index
-            model_type: Model type string
             vector_size: Vector size for fallback random vector
             
         Returns:
             User vector as numpy array
         """
-        # For matrix factorization models
+        if hasattr(model, "get_user_vectors"):
+            # Use the standardized interface if available
+            vector_provider = cast(VectorProvider, model)
+            user_vectors = vector_provider.get_user_vectors([user_idx])
+            if user_vectors.size > 0:
+                return user_vectors[0].reshape(1, -1).astype(np.float32)
+        
+        # Fallback for older model implementations
         if hasattr(model, "get_user_factors"):
             user_factors = model.get_user_factors()
             if user_factors is not None and user_idx < len(user_factors):
                 return user_factors[user_idx].reshape(1, -1).astype(np.float32)
-        
-        # For LightFM
-        if hasattr(model, "get_user_representations"):
-            _, user_vectors = model.get_user_representations()
-            if user_vectors is not None and user_idx < len(user_vectors):
-                return user_vectors[user_idx].reshape(1, -1).astype(np.float32)
-        
-        # For other embeddings models
-        if hasattr(model, "get_user_embedding") and hasattr(model, "user_embeddings"):
-            if model.user_embeddings is not None and user_idx in model.user_embeddings:
-                return np.array(model.user_embeddings[user_idx]).reshape(1, -1).astype(np.float32)
         
         # Fallback to random vector
         if vector_size is None:
             vector_size = getattr(model, "factors", 100)
         return np.random.random(vector_size).astype(np.float32).reshape(1, -1)
     
-    @staticmethod
     def get_item_vector(
+        self,
         model: BaseRecommender, 
-        item_idx: int, 
+        item_idx: int,
         item_id: str,
-        model_type: str,
         vector_size: Optional[int] = None
     ) -> np.ndarray:
-        """Get item vector based on model type.
+        """Get item vector from model.
         
         Args:
             model: Recommendation model
             item_idx: Item index
             item_id: Item ID string
-            model_type: Model type string
             vector_size: Vector size for fallback random vector
             
         Returns:
             Item vector as numpy array
         """
-        # For matrix factorization models
+        if hasattr(model, "get_item_vectors"):
+            # Use the standardized interface if available
+            vector_provider = cast(VectorProvider, model)
+            item_vectors = vector_provider.get_item_vectors([item_id])
+            if item_vectors.size > 0:
+                return item_vectors[0].reshape(1, -1).astype(np.float32)
+        
+        # Fallback for older model implementations
         if hasattr(model, "get_item_factors"):
             item_factors = model.get_item_factors()
             if item_factors is not None and item_idx < len(item_factors):
                 return item_factors[item_idx].reshape(1, -1).astype(np.float32)
-        
-        # For LightFM
-        if hasattr(model, "get_item_representations"):
-            _, item_vectors = model.get_item_representations()
-            if item_vectors is not None and item_idx < len(item_vectors):
-                return item_vectors[item_idx].reshape(1, -1).astype(np.float32)
-        
-        # For Item2Vec
-        if hasattr(model, "get_item_vectors") and hasattr(model, "item_vectors"):
-            if model.item_vectors is not None and item_id in model.item_vectors:
-                return np.array(model.item_vectors[item_id]).reshape(1, -1).astype(np.float32)
         
         # Fallback to random vector
         if vector_size is None:
@@ -136,8 +121,8 @@ class RecommendationService:
         user_id: str, 
         k: int = 10, 
         use_faiss: bool = True,
-        item_data: Optional[Dict[str, Dict[str, any]]] = None
-    ) -> Tuple[List[str], List[float], List[Dict[str, any]]]:
+        item_data: Optional[Dict[str, Dict[str, Any]]] = None
+    ) -> Tuple[List[str], List[float], List[Dict[str, Any]]]:
         """Generate recommendations for a user.
         
         Args:
@@ -150,81 +135,126 @@ class RecommendationService:
             Tuple of (item_ids, scores, item_metadata)
             
         Raises:
-            HTTPException: If user ID not found or recommendation system not initialized
+            ModelNotInitializedError: If recommender system is not initialized
+            UserNotFoundError: If user ID is not found
         """
         if not self.faiss_index:
-            raise HTTPException(status_code=503, detail="Recommender system not initialized")
+            raise ModelNotInitializedError()
         
         if user_id not in self.user_mapping:
-            raise HTTPException(status_code=404, detail=f"User {user_id} not found")
+            raise UserNotFoundError(user_id)
         
         user_idx = int(self.user_mapping[user_id])
         
         if use_faiss:
-            # Get user vector
-            user_vector = self.vector_service.get_user_vector(
-                model=self.model,
-                user_idx=user_idx,
-                model_type=self.model_type,
-                vector_size=self.faiss_index.d
-            )
-            
-            # Search for similar items
-            distances, indices = self.faiss_index.search(user_vector, k)
-            
-            # Process results
-            item_ids = []
-            scores = []
-            
-            for idx, score in zip(indices[0], distances[0]):
-                if idx == -1:  # Faiss returns -1 for no results
-                    continue
-                
-                # Get item ID from index
-                item_id = self.reverse_item_mapping.get(int(idx), f"unknown_{idx}")
-                item_ids.append(item_id)
-                scores.append(float(score))
+            return self._get_faiss_recommendations(user_idx, k, item_data)
         else:
-            # Use model's recommend method directly
-            if self.user_item_matrix is None:
-                # Fallback empty matrix
-                import scipy.sparse as sp
-                user_items = sp.csr_matrix((1, len(self.item_mapping)))
+            return self._get_direct_recommendations(user_idx, k, item_data)
+    
+    def _get_faiss_recommendations(
+        self, 
+        user_idx: int, 
+        k: int,
+        item_data: Optional[Dict[str, Dict[str, Any]]] = None
+    ) -> Tuple[List[str], List[float], List[Dict[str, Any]]]:
+        """Get recommendations using FAISS index.
+        
+        Args:
+            user_idx: User index
+            k: Number of recommendations
+            item_data: Item metadata
+            
+        Returns:
+            Tuple of (item_ids, scores, item_metadata)
+        """
+        # Get user vector
+        user_vector = self.vector_service.get_user_vector(
+            model=self.model,
+            user_idx=user_idx,
+            vector_size=self.faiss_index.d
+        )
+        
+        # Search for similar items
+        distances, indices = self.faiss_index.search(user_vector, k)
+        
+        # Process results
+        item_ids = []
+        scores = []
+        
+        for idx, score in zip(indices[0], distances[0], strict=False):
+            if idx == -1:  # Faiss returns -1 for no results
+                continue
+            
+            # Get item ID from index
+            item_id = self.reverse_item_mapping.get(int(idx), f"unknown_{idx}")
+            item_ids.append(item_id)
+            scores.append(float(score))
+        
+        return item_ids, scores, self._get_item_metadata(item_ids, item_data)
+    
+    def _get_direct_recommendations(
+        self, 
+        user_idx: int, 
+        k: int,
+        item_data: Optional[Dict[str, Dict[str, Any]]] = None
+    ) -> Tuple[List[str], List[float], List[Dict[str, Any]]]:
+        """Get recommendations directly from model.
+        
+        Args:
+            user_idx: User index
+            k: Number of recommendations
+            item_data: Item metadata
+            
+        Returns:
+            Tuple of (item_ids, scores, item_metadata)
+        """
+        # Prepare user-item matrix
+        if self.user_item_matrix is None:
+            # Fallback empty matrix
+            user_items = sp.csr_matrix((1, len(self.item_mapping)))
+        else:
+            if user_idx < self.user_item_matrix.shape[0]:
+                user_items = self.user_item_matrix[user_idx].reshape(1, -1)
             else:
-                if user_idx < self.user_item_matrix.shape[0]:
-                    user_items = self.user_item_matrix[user_idx].reshape(1, -1)
-                else:
-                    user_items = sp.csr_matrix((1, self.user_item_matrix.shape[1]))
-            
-            # Get recommendations
-            item_indices, scores = self.model.recommend(
-                user_id=user_idx,
-                user_items=user_items,
-                n_items=k
-            )
-            
-            # Convert item indices to IDs
-            item_ids = [self.reverse_item_mapping.get(int(idx), f"unknown_{idx}") for idx in item_indices]
+                user_items = sp.csr_matrix((1, self.user_item_matrix.shape[1]))
         
-        # Get item metadata if available
-        item_metadata = []
-        if item_data:
-            for item_id in item_ids:
-                if item_id in item_data:
-                    item_metadata.append(item_data[item_id])
-                else:
-                    item_metadata.append({})
-        else:
-            item_metadata = [{} for _ in item_ids]
+        # Get recommendations from model
+        item_indices, scores = self.model.recommend(
+            user_id=user_idx,
+            user_items=user_items,
+            n_items=k
+        )
         
-        return item_ids, scores, item_metadata
+        # Convert item indices to IDs
+        item_ids = [self.reverse_item_mapping.get(int(idx), f"unknown_{idx}") for idx in item_indices]
+        
+        return item_ids, scores, self._get_item_metadata(item_ids, item_data)
+    
+    def _get_item_metadata(
+        self, 
+        item_ids: List[str],
+        item_data: Optional[Dict[str, Dict[str, Any]]] = None
+    ) -> List[Dict[str, Any]]:
+        """Get metadata for items.
+        
+        Args:
+            item_ids: List of item IDs
+            item_data: Item metadata dictionary
+            
+        Returns:
+            List of item metadata dictionaries
+        """
+        if not item_data:
+            return [{} for _ in item_ids]
+        
+        return [item_data.get(item_id, {}) for item_id in item_ids]
     
     def find_similar_items(
         self, 
         item_id: str, 
         k: int = 10,
-        item_data: Optional[Dict[str, Dict[str, any]]] = None
-    ) -> Tuple[List[str], List[float], List[Dict[str, any]]]:
+        item_data: Optional[Dict[str, Dict[str, Any]]] = None
+    ) -> Tuple[List[str], List[float], List[Dict[str, Any]]]:
         """Find similar items.
         
         Args:
@@ -236,13 +266,14 @@ class RecommendationService:
             Tuple of (item_ids, scores, item_metadata)
             
         Raises:
-            HTTPException: If item ID not found or recommender system not initialized
+            ModelNotInitializedError: If recommender system is not initialized
+            ItemNotFoundError: If item ID is not found
         """
         if not self.faiss_index:
-            raise HTTPException(status_code=503, detail="Recommender system not initialized")
+            raise ModelNotInitializedError()
         
         if item_id not in self.item_mapping:
-            raise HTTPException(status_code=404, detail=f"Item {item_id} not found")
+            raise ItemNotFoundError(item_id)
         
         item_idx = int(self.item_mapping[item_id])
         
@@ -251,7 +282,6 @@ class RecommendationService:
             model=self.model,
             item_idx=item_idx,
             item_id=item_id,
-            model_type=self.model_type,
             vector_size=self.faiss_index.d
         )
         
@@ -263,7 +293,7 @@ class RecommendationService:
         scores = []
         seen_items = set()  # To avoid duplicates
         
-        for idx, score in zip(indices[0], distances[0]):
+        for idx, score in zip(indices[0], distances[0], strict=False):
             if idx == -1:  # Faiss returns -1 for no results
                 continue
             
@@ -282,15 +312,4 @@ class RecommendationService:
             if len(item_ids) >= k:
                 break
         
-        # Get item metadata if available
-        item_metadata = []
-        if item_data:
-            for similar_item_id in item_ids:
-                if similar_item_id in item_data:
-                    item_metadata.append(item_data[similar_item_id])
-                else:
-                    item_metadata.append({})
-        else:
-            item_metadata = [{} for _ in item_ids]
-        
-        return item_ids, scores, item_metadata
+        return item_ids, scores, self._get_item_metadata(item_ids, item_data)

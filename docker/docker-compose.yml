@@ -48,6 +48,46 @@ services:
       - recsys-lite-api
     networks:
       - recsys-net
+      
+  # Message queue-based ingest worker (optional)
+  recsys-lite-mq-worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.worker
+    volumes:
+      # Mount data directory for database
+      - ../data:/data
+    environment:
+      - DB_PATH=/data/recsys.db
+      - LOG_LEVEL=INFO
+    restart: unless-stopped
+    depends_on:
+      - rabbitmq
+    networks:
+      - recsys-net
+    command: >
+      sh -c "pip install recsys-lite[mq] && 
+             recsys-lite queue-ingest rabbitmq 
+             --db /data/recsys.db 
+             --rabbitmq-host rabbitmq 
+             --rabbitmq-queue events"
+             
+  # RabbitMQ service
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"   # AMQP protocol port
+      - "15672:15672" # Management UI
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - recsys-net
 
 networks:
   recsys-net:

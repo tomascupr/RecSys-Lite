@@ -16,6 +16,8 @@ from recsys_lite.indexing import FaissIndexBuilder
 from recsys_lite.ingest import ingest_data
 # We import lazily for stream to avoid optional dependency issues.
 from recsys_lite.ingest import stream_events
+# Import message queue ingest
+from recsys_lite.ingest import queue_ingest
 from recsys_lite.models import (
     ALSModel,
     BaseRecommender,
@@ -69,7 +71,7 @@ def ingest(
 
 
 # ---------------------------------------------------------------------------
-# Streaming ingest command
+# Streaming ingest commands
 # ---------------------------------------------------------------------------
 
 
@@ -92,6 +94,105 @@ def stream_ingest(
     try:
         stream_events(events_dir, db, poll_interval=poll_interval)
     except FileNotFoundError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1)
+
+
+class QueueType(str, Enum):
+    """Available message queue types."""
+    RABBITMQ = "rabbitmq"
+    KAFKA = "kafka"
+
+
+@app.command(name="queue-ingest")
+def queue_ingest_command(
+    queue_type: QueueType = typer.Argument(
+        QueueType.RABBITMQ, 
+        help="Type of message queue (rabbitmq or kafka)"
+    ),
+    db: Path = typer.Option("recsys.db", help="DuckDB database to append to"),
+    batch_size: int = typer.Option(100, help="Number of messages to process in a batch"),
+    poll_interval: int = typer.Option(5, help="Polling interval in seconds if no messages"),
+    # RabbitMQ specific options
+    rabbitmq_host: str = typer.Option("localhost", help="RabbitMQ host"),
+    rabbitmq_port: int = typer.Option(5672, help="RabbitMQ port"),
+    rabbitmq_queue: str = typer.Option("events", help="RabbitMQ queue name"),
+    rabbitmq_username: str = typer.Option("guest", help="RabbitMQ username"),
+    rabbitmq_password: str = typer.Option("guest", help="RabbitMQ password"),
+    rabbitmq_vhost: str = typer.Option("/", help="RabbitMQ virtual host"),
+    # Kafka specific options
+    kafka_servers: str = typer.Option("localhost:9092", help="Kafka bootstrap servers"),
+    kafka_topic: str = typer.Option("events", help="Kafka topic"),
+    kafka_group: str = typer.Option("recsys-lite", help="Kafka consumer group"),
+) -> None:
+    """Run a *message queue* based streaming ingest process.
+    
+    The command connects to a message queue (RabbitMQ or Kafka) and consumes 
+    event messages, appending them to the DuckDB database.
+    
+    For RabbitMQ, messages should be JSON objects with at least 'user_id' and 'item_id' fields.
+    Optional fields include 'qty' (defaults to 1) and 'timestamp' (defaults to current time).
+    
+    This requires the optional message queue dependencies:
+    pip install recsys-lite[mq]
+    
+    Or to install the specific dependencies:
+    - For RabbitMQ: pip install pika
+    - For Kafka: pip install kafka-python
+    """
+    # Construct queue configuration based on the selected queue type
+    queue_config: Dict[str, Any] = {}
+    
+    if queue_type == QueueType.RABBITMQ:
+        try:
+            import pika  # Check if pika is installed
+        except ImportError:
+            typer.echo(
+                "Error: RabbitMQ support requires the pika package.\n"
+                "Install it with: pip install recsys-lite[mq]", 
+                err=True
+            )
+            raise typer.Exit(code=1)
+            
+        queue_config = {
+            "host": rabbitmq_host,
+            "port": rabbitmq_port,
+            "queue": rabbitmq_queue,
+            "username": rabbitmq_username,
+            "password": rabbitmq_password,
+            "virtual_host": rabbitmq_vhost,
+        }
+    elif queue_type == QueueType.KAFKA:
+        try:
+            import kafka  # Check if kafka-python is installed
+        except ImportError:
+            typer.echo(
+                "Error: Kafka support requires the kafka-python package.\n"
+                "Install it with: pip install recsys-lite[mq]", 
+                err=True
+            )
+            raise typer.Exit(code=1)
+            
+        queue_config = {
+            "bootstrap_servers": kafka_servers,
+            "topic": kafka_topic,
+            "group_id": kafka_group,
+        }
+    
+    typer.echo(
+        f"Starting {queue_type.value} queue-based ingest – "
+        f"batch size: {batch_size}, poll interval: {poll_interval}s"
+    )
+    
+    try:
+        queue_ingest(
+            queue_config=queue_config,
+            db_path=db,
+            queue_type=queue_type.value,
+            batch_size=batch_size,
+            poll_interval=poll_interval,
+        )
+    except Exception as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1)
 

@@ -78,8 +78,17 @@ docker compose -f docker/docker-compose.yml up -d
 # Ingest data into DuckDB
 recsys-lite ingest --events path/to/events.parquet --items path/to/items.csv --db recsys.db
 
-# (Optional) continuously append new *.parquet files that appear in a directory
+# File-based streaming: continuously append new *.parquet files that appear in a directory
 recsys-lite stream-ingest data/incremental --db recsys.db --poll-interval 5
+
+# Message queue-based streaming (requires additional dependencies)
+# Install message queue dependencies: pip install recsys-lite[mq]
+
+# RabbitMQ streaming
+recsys-lite queue-ingest rabbitmq --db recsys.db --rabbitmq-host localhost --rabbitmq-queue events
+
+# Kafka streaming
+recsys-lite queue-ingest kafka --db recsys.db --kafka-servers localhost:9092 --kafka-topic events
 ```
 
 ### Training Models
@@ -140,6 +149,7 @@ function App() {
 |---------|-------------|---------|
 | `ingest` | Ingest data into DuckDB | `--events <parquet>`, `--items <csv>`, `--db <path>` |
 | `stream-ingest` | Watch a directory and append new parquet files to `events` table | `--poll-interval <sec>`, `--db <path>` |
+| `queue-ingest` | Stream events from a message queue to `events` table | `rabbitmq|kafka`, `--db <path>`, `--batch-size <num>` |
 | `gdpr export-user` | Export user data | `--user-id <id>`, `--db <path>`, `--output <json>` |
 | `gdpr delete-user` | Delete user data | `--user-id <id>`, `--db <path>` |
 

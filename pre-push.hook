@@ -1,0 +1,17 @@
+#!/bin/bash
+# Git pre-push hook to run CI checks locally before pushing
+# Install by running: cp pre-push.hook .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+
+echo "🔄 Running pre-push checks..."
+
+# Run the local CI script
+./run_ci_locally.sh
+
+# If the CI script fails, prevent the push
+if [ $? -ne 0 ]; then
+    echo "❌ Pre-push checks failed. Push aborted."
+    exit 1
+fi
+
+echo "✅ Pre-push checks passed. Continuing with push."
+exit 0

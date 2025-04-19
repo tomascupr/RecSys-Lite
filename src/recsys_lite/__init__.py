@@ -208,6 +208,9 @@ def _install_faiss_stub() -> None:  # pragma: no cover
     _faiss.METRIC_INNER_PRODUCT = 0
     _faiss.METRIC_L2 = 1
 
+    # Expose _FakeIndex as the faiss.Index class for type annotation compatibility
+    _faiss.Index = _FakeIndex
+
     # Factory helpers -------------------------------------------------------
     _faiss.IndexFlatL2 = lambda dim: _FakeIndex(dim)  # type: ignore[attr-defined]
     _faiss.IndexFlatIP = lambda dim: _FakeIndex(dim)  # type: ignore[attr-defined]
@@ -222,6 +225,18 @@ def _install_faiss_stub() -> None:  # pragma: no cover
         return vecs
 
     _faiss.normalize_L2 = _normalize_L2  # type: ignore[attr-defined]
+
+    # Add functions for reading/writing indices
+    def _write_index(index, path):  # noqa: D401 - stub
+        # Just a stub - does nothing in test mode
+        pass
+
+    def _read_index(path):  # noqa: D401 - stub
+        # Return a fake index
+        return _FakeIndex(100)  # Default 100-dim index
+
+    _faiss.write_index = _write_index
+    _faiss.read_index = _read_index
 
     _sys.modules["faiss"] = _faiss
 

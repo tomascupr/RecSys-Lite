@@ -53,11 +53,11 @@ gensim = "^4.3.1"
 recsys-lite = "recsys_lite.cli:app"
 
 [tool.black]
-line-length = 88
+line-length = 120
 
 [tool.isort]
 profile = "black"
-line_length = 88
+line_length = 120
 
 [tool.mypy]
 python_version = "3.11"
@@ -102,7 +102,7 @@ module = [
 ignore_errors = true
 
 [tool.ruff]
-line-length = 100           # wider but still readable
+line-length = 120           # increased for better readability
 target-version = "py311"
 select = ["E", "F", "B", "I"]
 extend-select = ["I"]       # keep import‑sort rule

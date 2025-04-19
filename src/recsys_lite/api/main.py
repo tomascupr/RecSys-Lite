@@ -34,19 +34,19 @@ def create_app(model_dir: Union[str, Path] = "model_artifacts/als") -> FastAPI:
         description="Lightweight recommendation system for small e-commerce shops",
         version="0.1.0",
     )
-    
+
     # Add error handlers
     add_error_handlers(app)
-    
+
     # Add request middleware to count requests
     @app.middleware("http")
     async def count_requests(request: Request, call_next):
         """Count requests middleware.
-        
+
         Args:
             request: FastAPI request
             call_next: Next middleware function
-            
+
         Returns:
             Response
         """
@@ -61,19 +61,20 @@ def create_app(model_dir: Union[str, Path] = "model_artifacts/als") -> FastAPI:
         """Load model artifacts on startup."""
         logger.info(f"Loading model artifacts from {model_dir}")
         state = get_api_state()
-        
+
         try:
             # Set up recommendation service
             rec_service = setup_recommendation_service(Path(model_dir))
-            
+
             # Store service in app state
-            state.recommendation_service = rec_service
-            
+            state.model = rec_service.model
+            state.model_type = rec_service.model_type
+
             # Store model information
             state.model_type = rec_service.model_type
             state.user_mapping = rec_service.user_mapping
             state.item_mapping = rec_service.item_mapping
-            
+
             logger.info(f"API initialized with model type: {rec_service.model_type}")
         except Exception as e:
             logger.error(f"Error loading model artifacts: {e}")
@@ -93,5 +94,5 @@ app = create_app()
 
 if __name__ == "__main__":
     import uvicorn
-    
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

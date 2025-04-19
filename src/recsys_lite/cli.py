@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import time
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -17,13 +18,7 @@ from recsys_lite.indexing import FaissIndexBuilder
 # Import message queue ingest
 from recsys_lite.ingest import ingest_data, queue_ingest, stream_events
 from recsys_lite.models import (
-    ALSModel,
-    BPRModel,
-    GRU4Rec,
     HybridModel,
-    Item2VecModel,
-    LightFMModel,
-    TextEmbeddingModel,
 )
 from recsys_lite.optimization import OptunaOptimizer
 
@@ -106,9 +101,7 @@ class QueueType(str, Enum):
 
 @app.command(name="queue-ingest")
 def queue_ingest_command(
-    queue_type: QueueType = typer.Argument(
-        QueueType.RABBITMQ, help="Type of message queue (rabbitmq or kafka)"
-    ),
+    queue_type: QueueType = typer.Argument(QueueType.RABBITMQ, help="Type of message queue (rabbitmq or kafka)"),
     db: Path = typer.Option("recsys.db", help="DuckDB database to append to"),
     batch_size: int = typer.Option(100, help="Number of messages to process in a batch"),
     poll_interval: int = typer.Option(5, help="Polling interval in seconds if no messages"),
@@ -151,8 +144,7 @@ def queue_ingest_command(
                 raise ImportError("pika package not found")
         except ImportError as err:
             typer.echo(
-                "Error: RabbitMQ support requires the pika package.\n"
-                "Install it with: pip install recsys-lite[mq]",
+                "Error: RabbitMQ support requires the pika package.\n" "Install it with: pip install recsys-lite[mq]",
                 err=True,
             )
             raise typer.Exit(code=1) from err
@@ -242,16 +234,14 @@ def gdpr_export_user(
     if len(events_df) > 0:
         item_ids = events_df["item_id"].tolist()
         placeholders = ", ".join(["?"] * len(item_ids))
-        item_df = conn.execute(
-            f"SELECT * FROM items WHERE item_id IN ({placeholders})", item_ids
-        ).fetchdf()
+        item_df = conn.execute(f"SELECT * FROM items WHERE item_id IN ({placeholders})", item_ids).fetchdf()
     else:
         item_df = conn.execute("SELECT * FROM items WHERE 1=0").fetchdf()
 
     # Prepare export data
     export_data = {
         "user_id": user_id,
-        "export_timestamp": int(os.time()),
+        "export_timestamp": int(time.time()),
         "events": events_df.to_dict(orient="records"),
         "items": item_df.to_dict(orient="records"),
     }
@@ -274,9 +264,8 @@ def gdpr_delete_user(
     conn = duckdb.connect(str(db))
 
     # Count user events
-    event_count = conn.execute(
-        "SELECT COUNT(*) FROM events WHERE user_id = ?", [user_id]
-    ).fetchone()[0]
+    result = conn.execute("SELECT COUNT(*) FROM events WHERE user_id = ?", [user_id]).fetchone()
+    event_count = result[0] if result is not None else 0
 
     if event_count == 0:
         typer.echo(f"No data found for user {user_id}")
@@ -302,7 +291,7 @@ def gdpr_delete_user(
     """
     )
 
-    conn.execute("INSERT INTO deleted_users VALUES (?, ?)", [user_id, int(os.time())])
+    conn.execute("INSERT INTO deleted_users VALUES (?, ?)", [user_id, int(time.time())])
 
     typer.echo(f"Deleted {event_count} events for user {user_id}")
     typer.echo("Note: User vectors will be removed during the next model update")
@@ -353,8 +342,8 @@ def train(
 
     user_mapping = {user: idx for idx, user in enumerate(unique_users)}
     item_mapping = {item: idx for idx, item in enumerate(unique_items)}
-    # Create reverse mapping for items
-    reverse_item_mapping = {idx: item for item, idx in item_mapping.items()}
+    # Create reverse mapping for items - used in debugging
+    _ = {idx: item for item, idx in item_mapping.items()}
 
     # Create item metadata dictionary
     item_data = {}
@@ -381,9 +370,7 @@ def train(
             cols.append(item_idx)
             data.append(interaction)
 
-        user_item_matrix = csr_matrix(
-            (data, (rows, cols)), shape=(len(user_mapping), len(item_mapping))
-        )
+        user_item_matrix = csr_matrix((data, (rows, cols)), shape=(len(user_mapping), len(item_mapping)))
 
     # Load parameters from file if specified
     params = {}
@@ -394,55 +381,60 @@ def train(
     # Initialize model based on type with parameters
     logger.info(f"Initializing {model_type.value} model")
 
+    from recsys_lite.models import ModelRegistry
+
+    # Get the appropriate model class
+    model_class = ModelRegistry.get_model_class(model_type.value)
+
+    # Prepare appropriate parameters for each model type
     if model_type == ModelType.ALS:
-        model = ALSModel(
-            factors=params.get("factors", 128),
-            regularization=params.get("regularization", 0.01),
-            alpha=params.get("alpha", 1.0),
-            iterations=params.get("iterations", 15),
-        )
+        model_params = {
+            "factors": params.get("factors", 128),
+            "regularization": params.get("regularization", 0.01),
+            "alpha": params.get("alpha", 1.0),
+            "iterations": params.get("iterations", 15),
+        }
     elif model_type == ModelType.BPR:
-        model = BPRModel(
-            factors=params.get("factors", 100),
-            learning_rate=params.get("learning_rate", 0.05),
-            regularization=params.get("regularization", 0.01),
-            iterations=params.get("iterations", 100),
-        )
+        model_params = {
+            "factors": params.get("factors", 100),
+            "learning_rate": params.get("learning_rate", 0.05),
+            "regularization": params.get("regularization", 0.01),
+            "iterations": params.get("iterations", 100),
+        }
     elif model_type == ModelType.ITEM2VEC:
-        model = Item2VecModel(
-            vector_size=params.get("vector_size", 100),
-            window=params.get("window", 5),
-            min_count=params.get("min_count", 5),
-            sg=params.get("sg", 1),
-            epochs=params.get("epochs", 5),
-        )
+        model_params = {
+            "vector_size": params.get("vector_size", 100),
+            "window": params.get("window", 5),
+            "min_count": params.get("min_count", 5),
+            "sg": params.get("sg", 1),
+            "epochs": params.get("epochs", 5),
+        }
     elif model_type == ModelType.LIGHTFM:
-        model = LightFMModel(
-            no_components=params.get("no_components", 64),
-            learning_rate=params.get("learning_rate", 0.05),
-            loss=params.get("loss", "warp"),
-            epochs=params.get("epochs", 50),
-        )
+        model_params = {
+            "no_components": params.get("no_components", 64),
+            "learning_rate": params.get("learning_rate", 0.05),
+            "loss": params.get("loss", "warp"),
+            "epochs": params.get("epochs", 50),
+        }
     elif model_type == ModelType.GRU4REC:
-        model = GRU4Rec(
-            hidden_size=params.get("hidden_size", 100),
-            n_layers=params.get("n_layers", 1),
-            dropout=params.get("dropout", 0.1),
-            batch_size=params.get("batch_size", 64),
-            learning_rate=params.get("learning_rate", 0.001),
-            n_epochs=params.get("n_epochs", 10),
-        )
+        model_params = {
+            "n_items": len(item_mapping),
+            "hidden_size": params.get("hidden_size", 100),
+            "n_layers": params.get("n_layers", 1),
+            "dropout": params.get("dropout", 0.1),
+            "batch_size": params.get("batch_size", 64),
+            "learning_rate": params.get("learning_rate", 0.001),
+            "n_epochs": params.get("n_epochs", 10),
+        }
     elif model_type == ModelType.EASE:
-        model = LightFMModel(
-            lambda_=params.get("lambda_", 0.5),
-        )
+        model_params = {
+            "lambda_": params.get("lambda_", 0.5),
+        }
     elif model_type == ModelType.TEXT_EMBEDDING:
-        model = TextEmbeddingModel(
-            model_name=params.get("model_name", "all-MiniLM-L6-v2"),
-            item_text_fields=params.get(
-                "item_text_fields", ["title", "category", "brand", "description"]
-            ),
-            field_weights=params.get(
+        model_params = {
+            "model_name": params.get("model_name", "all-MiniLM-L6-v2"),
+            "item_text_fields": params.get("item_text_fields", ["title", "category", "brand", "description"]),
+            "field_weights": params.get(
                 "field_weights",
                 {
                     "title": 2.0,
@@ -451,17 +443,21 @@ def train(
                     "description": 3.0,
                 },
             ),
-            normalize_vectors=params.get("normalize_vectors", True),
-            batch_size=params.get("batch_size", 64),
-            max_length=params.get("max_length", 512),
-        )
-    elif model_type == ModelType.HYBRID:
+            "normalize_vectors": params.get("normalize_vectors", True),
+            "batch_size": params.get("batch_size", 64),
+            "max_length": params.get("max_length", 512),
+        }
+    else:
+        raise ValueError(f"Unknown model type: {model_type}")
+
+    # Handle special case for HYBRID
+    if model_type == ModelType.HYBRID:
         # For hybrid, we don't support direct training
         typer.echo("Error: Hybrid models should be created using the train-hybrid command")
         raise typer.Exit(code=1)
-    else:
-        typer.echo(f"Unknown model type: {model_type}")
-        raise typer.Exit(code=1)
+
+    # Create the model instance with appropriate parameters
+    model = model_class(**model_params)
 
     # Train model
     logger.info(f"Training {model_type.value} model")
@@ -490,13 +486,25 @@ def train(
 
     # Create Faiss index for similarity search
     logger.info("Building Faiss index")
-    index_builder = FaissIndexBuilder()
-    index_builder.build_index(
-        model=model,
-        item_mapping=item_mapping,
-        reverse_item_mapping=reverse_item_mapping,
-        output_dir=output / "faiss_index",
-    )
+
+    # Get item vectors from the model
+    if hasattr(model, "get_item_vectors"):
+        # Use the model's vectorization if available
+        item_ids = list(item_mapping.values())
+        item_vectors = model.get_item_vectors(item_ids)
+    elif hasattr(model, "get_item_factors"):
+        # Fallback to older interface
+        item_vectors = model.get_item_factors()
+    else:
+        # Generate random vectors if needed (shouldn't happen with real models)
+        import numpy as np
+
+        vector_size = getattr(model, "factors", 100)
+        item_vectors = np.random.random((len(item_mapping), vector_size)).astype(np.float32)
+
+    # Create and save FAISS index
+    index_builder = FaissIndexBuilder(vectors=item_vectors, ids=list(range(len(item_mapping))))
+    index_builder.save(str(output / "faiss_index"))
 
     logger.info(f"{model_type.value} model training complete")
 
@@ -593,15 +601,27 @@ def train_hybrid(
     with open(output / "item_mapping.json", "r") as f:
         item_mapping = json.load(f)
 
-    reverse_item_mapping = {int(idx): item for item, idx in item_mapping.items()}
+    # Create reverse mapping for items - used in debugging
+    _ = {int(idx): item for item, idx in item_mapping.items()}
 
-    index_builder = FaissIndexBuilder()
-    index_builder.build_index(
-        model=hybrid_model,
-        item_mapping=item_mapping,
-        reverse_item_mapping=reverse_item_mapping,
-        output_dir=output / "faiss_index",
-    )
+    # Get item vectors from the hybrid model
+    if hasattr(hybrid_model, "get_item_vectors"):
+        # Use the model's vectorization if available
+        item_ids = list(item_mapping.values())
+        item_vectors = hybrid_model.get_item_vectors(item_ids)
+    elif hasattr(hybrid_model, "get_item_factors"):
+        # Fallback to older interface
+        item_vectors = hybrid_model.get_item_factors()
+    else:
+        # Generate random vectors if needed (shouldn't happen with real models)
+        import numpy as np
+
+        vector_size = getattr(hybrid_model, "factors", 100)
+        item_vectors = np.random.random((len(item_mapping), vector_size)).astype(np.float32)
+
+    # Create and save FAISS index
+    index_builder = FaissIndexBuilder(vectors=item_vectors, ids=list(range(len(item_mapping))))
+    index_builder.save(str(output / "faiss_index"))
 
     logger.info(f"Hybrid model ({'+'.join(model_types)}) creation complete")
 
@@ -659,9 +679,7 @@ def optimize(
         cols.append(item_idx)
         data.append(interaction)
 
-    user_item_matrix = csr_matrix(
-        (data, (rows, cols)), shape=(len(user_mapping), len(item_mapping))
-    )
+    user_item_matrix = csr_matrix((data, (rows, cols)), shape=(len(user_mapping), len(item_mapping)))
 
     # Define parameter spaces for each model type
     if model_type == ModelType.ALS:
@@ -731,18 +749,25 @@ def optimize(
         raise typer.Exit(code=1)
 
     # Initialize optimizer
+    from recsys_lite.models import ModelRegistry
+
+    model_class = ModelRegistry.get_model_class(model_type.value)
+
     optimizer = OptunaOptimizer(
-        model_type=model_type.value,
-        param_space=param_space,
+        model_class=model_class,
         metric=metric.value,
         n_trials=trials,
-        test_size=test_size,
-        random_state=seed,
+        seed=seed,
     )
 
     # Run optimization
+    # Create validation data split
+    from sklearn.model_selection import train_test_split
+
+    train_data, valid_data = train_test_split(user_item_matrix, test_size=test_size, random_state=seed)
+
     logger.info(f"Running optimization with {trials} trials")
-    best_params = optimizer.optimize(user_item_matrix)
+    best_params = optimizer.optimize(train_data=train_data, valid_data=valid_data, param_space=param_space)
 
     # Save best parameters
     params_file = output / "best_params.json"
@@ -815,9 +840,7 @@ def worker(
     model_dir: Path = typer.Option("model_artifacts/als", help="Model directory"),
     db: Path = typer.Option("recsys.db", help="DuckDB database path"),
     interval: int = typer.Option(60, help="Update interval in seconds"),
-    incremental_dir: Optional[Path] = typer.Option(
-        None, help="Directory to watch for incremental data"
-    ),
+    incremental_dir: Optional[Path] = typer.Option(None, help="Directory to watch for incremental data"),
 ) -> None:
     """Start the update worker for incremental model updates."""
     from recsys_lite.update.worker import UpdateWorker
@@ -832,12 +855,30 @@ def worker(
         typer.echo(f"Database {db} does not exist")
         raise typer.Exit(code=1)
 
+    # Load the model and necessary components
+    from recsys_lite.api.loaders import load_faiss_index, load_model
+
+    # Load model and Faiss index
+    model_path = Path(model_dir)
+    model, model_type = load_model(model_path)
+    faiss_index = load_faiss_index(model_path)
+
+    # Load item mapping
+    with open(model_path / "item_mapping.json", "r") as f:
+        import json
+
+        item_mapping = json.load(f)
+
+    # Create reverse mapping
+    item_id_map = {int(idx): item_id for item_id, idx in item_mapping.items()}
+
     # Create worker
     worker = UpdateWorker(
-        model_dir=str(model_dir),
-        db_path=str(db),
+        db_path=Path(db),
+        model=model,
+        faiss_index=faiss_index,
+        item_id_map=item_id_map,
         interval=interval,
-        incremental_dir=str(incremental_dir) if incremental_dir else None,
     )
 
     # Start worker

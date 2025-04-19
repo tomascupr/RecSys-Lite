@@ -113,7 +113,8 @@ class GRU4RecModel(nn.Module):
         output = output.contiguous().view(-1, self.hidden_size)
         output = self.out(output)
 
-        return output, hidden
+        # Ensure we return the expected type for mypy
+        return output, hidden  # type: ignore
 
     def init_hidden(self, batch_size: int) -> torch.Tensor:
         """Initialize hidden state.

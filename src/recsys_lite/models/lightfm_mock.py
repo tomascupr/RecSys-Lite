@@ -2,16 +2,19 @@
 
 import os
 import pickle
-from typing import Any, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import scipy.sparse as sp
+from numpy.typing import NDArray
 
-from recsys_lite.models.base import BaseRecommender
+from recsys_lite.models.base import BaseRecommender, ModelRegistry
 
 
 class LightFMModel(BaseRecommender):
     """Mock hybrid matrix factorization model for CI environment."""
+
+    model_type = "lightfm"
 
     def __init__(
         self,
@@ -41,12 +44,12 @@ class LightFMModel(BaseRecommender):
         self.user_alpha = user_alpha
         self.epochs = epochs
         self.random_state = random_state
-        self.user_biases = None
-        self.item_biases = None
-        self.user_embeddings = None
-        self.item_embeddings = None
-        self.user_features = None
-        self.item_features = None
+        self.user_biases: Optional[NDArray[np.float64]] = None
+        self.item_biases: Optional[NDArray[np.float64]] = None
+        self.user_embeddings: Optional[NDArray[np.float32]] = None
+        self.item_embeddings: Optional[NDArray[np.float32]] = None
+        self.user_features: Optional[sp.csr_matrix] = None
+        self.item_features: Optional[sp.csr_matrix] = None
 
     def fit(self, user_item_matrix: sp.csr_matrix, **kwargs: Any) -> None:
         """Fit the mock model on user-item interaction data.
@@ -57,8 +60,8 @@ class LightFMModel(BaseRecommender):
         """
         # Mock implementation - just create random embeddings
         n_users, n_items = user_item_matrix.shape
-        self.user_biases = np.zeros(n_users)
-        self.item_biases = np.zeros(n_items)
+        self.user_biases = np.zeros(n_users, dtype=np.float64)
+        self.item_biases = np.zeros(n_items, dtype=np.float64)
         self.user_embeddings = np.random.rand(n_users, self.no_components).astype(np.float32)
         self.item_embeddings = np.random.rand(n_items, self.no_components).astype(np.float32)
 
@@ -68,7 +71,7 @@ class LightFMModel(BaseRecommender):
         user_items: sp.csr_matrix,
         n_items: int = 10,
         **kwargs: Any,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> Tuple[NDArray[np.int_], NDArray[np.float32]]:
         """Generate recommendations for a user.
 
         Args:
@@ -90,47 +93,47 @@ class LightFMModel(BaseRecommender):
         n_items_total = self.item_embeddings.shape[0]
 
         # Just return random recommendations
-        top_items = np.random.choice(n_items_total, size=n_items, replace=False)
-        top_scores = np.random.random(n_items)
+        top_items = np.random.choice(n_items_total, size=n_items, replace=False).astype(np.int_)
+        top_scores = np.random.random(n_items).astype(np.float32)
 
         return top_items, top_scores
 
-    def get_item_factors(self) -> np.ndarray:
+    def get_item_factors(self) -> NDArray[np.float32]:
         """Get item factors matrix.
 
         Returns:
             Item factors matrix
         """
         if self.item_embeddings is None:
-            return np.array([])  # Return empty array if not initialized
-        return np.asarray(self.item_embeddings)
-        
+            return np.array([], dtype=np.float32)  # Return empty array if not initialized
+        return np.asarray(self.item_embeddings, dtype=np.float32)
+
     def predict(self, user_ids: np.ndarray, item_ids: np.ndarray) -> np.ndarray:
         """Predict scores for the given user-item pairs.
-        
+
         Args:
             user_ids: User IDs
             item_ids: Item IDs
-            
+
         Returns:
             Array of scores
         """
         if self.user_embeddings is None or self.item_embeddings is None:
             raise ValueError("Model has not been trained")
-            
+
         # Generate random scores for the given user-item pairs
         scores = np.random.random(len(user_ids))
         return scores
-        
+
     def get_item_representations(self) -> Tuple[np.ndarray, np.ndarray]:
         """Get item biases and embeddings.
-        
+
         Returns:
             Tuple of (item_biases, item_embeddings)
         """
         if self.item_biases is None or self.item_embeddings is None:
             raise ValueError("Model has not been trained")
-            
+
         return self.item_biases, self.item_embeddings
 
     def save_model(self, path: str) -> None:
@@ -179,3 +182,46 @@ class LightFMModel(BaseRecommender):
         self.item_biases = model_state["item_biases"]
         self.user_embeddings = model_state["user_embeddings"]
         self.item_embeddings = model_state["item_embeddings"]
+
+    def _get_model_state(self) -> Dict[str, Any]:
+        """Get model state for serialization."""
+        return {
+            "no_components": self.no_components,
+            "learning_rate": self.learning_rate,
+            "loss": self.loss,
+            "item_alpha": self.item_alpha,
+            "user_alpha": self.user_alpha,
+            "epochs": self.epochs,
+            "random_state": self.random_state,
+            "user_biases": self.user_biases,
+            "item_biases": self.item_biases,
+            "user_embeddings": self.user_embeddings,
+            "item_embeddings": self.item_embeddings,
+        }
+
+    def _set_model_state(self, model_state: Dict[str, Any]) -> None:
+        """Set model state from deserialized data."""
+        self.no_components = model_state.get("no_components", 100)
+        self.learning_rate = model_state.get("learning_rate", 0.05)
+        self.loss = model_state.get("loss", "warp")
+        self.item_alpha = model_state.get("item_alpha", 0.0)
+        self.user_alpha = model_state.get("user_alpha", 0.0)
+        self.epochs = model_state.get("epochs", 50)
+        self.random_state = model_state.get("random_state")
+        self.user_biases = model_state.get("user_biases")
+        self.item_biases = model_state.get("item_biases")
+        self.user_embeddings = model_state.get("user_embeddings")
+        self.item_embeddings = model_state.get("item_embeddings")
+
+    def get_item_vectors(self, item_ids: List[Union[str, int]]) -> NDArray[np.float32]:
+        """Get item vectors for specified items."""
+        if self.item_embeddings is None:
+            return np.array([], dtype=np.float32)
+
+        # This is just a mock, so we'll return random vectors
+        # Just generate random vectors of the correct shape regardless of input
+        return np.random.rand(len(item_ids), self.no_components).astype(np.float32)
+
+
+# Register the model
+ModelRegistry.register("lightfm", LightFMModel)

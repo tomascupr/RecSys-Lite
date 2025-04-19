@@ -2,17 +2,20 @@
 
 import os
 import pickle
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import numpy as np
+from numpy.typing import NDArray
 import scipy.sparse as sp
 from gensim.models import Word2Vec
 
-from recsys_lite.models.base import BaseRecommender
+from recsys_lite.models.base import BaseRecommender, ModelRegistry
 
 
 class Item2VecModel(BaseRecommender):
     """Item2Vec model for item embeddings."""
+    
+    model_type = "item2vec"
 
     def __init__(
         self,
@@ -42,25 +45,25 @@ class Item2VecModel(BaseRecommender):
         self.item_vectors: Dict[str, np.ndarray] = {}
         self.user_item_sessions: Dict[Union[int, str], List[str]] = {}
 
-    def fit(self, data, **kwargs: Any) -> None:
+    def fit(self, user_item_matrix, **kwargs: Any) -> None:
         """Fit the Item2Vec model.
 
         Args:
-            data: Either a sparse user-item interaction matrix or a list of sessions
+            user_item_matrix: A sparse user-item interaction matrix or any object that can be converted to sessions
             **kwargs: Additional model-specific parameters
         """
         # Item2Vec normally works with sessions, not a matrix
         # For compatibility, extract sessions from the matrix if provided
         if "user_sessions" in kwargs:
             user_sessions = kwargs["user_sessions"]
-        elif isinstance(data, list):
-            # If data is already a list of sessions, use it directly
-            user_sessions = data
+        elif isinstance(user_item_matrix, list):
+            # If user_item_matrix is already a list of sessions, use it directly
+            user_sessions = user_item_matrix
         else:
             # Create simple sessions from the matrix (not ideal but works for compatibility)
             user_sessions = []
-            for user_idx in range(data.shape[0]):
-                items = data[user_idx].indices.astype(str).tolist()
+            for user_idx in range(user_item_matrix.shape[0]):
+                items = user_item_matrix[user_idx].indices.astype(str).tolist()
                 if items:
                     user_sessions.append(items)
 
@@ -144,7 +147,7 @@ class Item2VecModel(BaseRecommender):
         items = list(self.model.wv.index_to_key)
         self.item_vectors = {item: np.array(self.model.wv[item]) for item in items}
 
-    def get_item_vectors(self) -> Dict[str, np.ndarray]:
+    def get_item_vectors_dict(self) -> Dict[str, np.ndarray]:
         """Get item vectors dictionary.
 
         Returns:
@@ -152,7 +155,7 @@ class Item2VecModel(BaseRecommender):
         """
         return self.item_vectors
 
-    def get_item_vectors_matrix(self, item_ids: List[str]) -> np.ndarray:
+    def get_item_vectors_matrix(self, item_ids: List[str]) -> NDArray[np.float32]:
         """Get item vectors as a matrix.
 
         Args:
@@ -161,7 +164,7 @@ class Item2VecModel(BaseRecommender):
         Returns:
             Matrix of item embeddings
         """
-        matrix = np.zeros((len(item_ids), self.model.vector_size))
+        matrix = np.zeros((len(item_ids), self.model.vector_size), dtype=np.float32)
         for i, item_id in enumerate(item_ids):
             if item_id in self.item_vectors:
                 matrix[i] = self.item_vectors[item_id]
@@ -194,3 +197,75 @@ class Item2VecModel(BaseRecommender):
         # Load item vectors
         with open(os.path.join(path, "item_vectors.pkl"), "rb") as f:
             self.item_vectors = pickle.load(f)
+            
+    def _get_model_state(self) -> Dict[str, Any]:
+        """Get model state for serialization."""
+        return {
+            "item_vectors": self.item_vectors,
+            "size": self.size,
+            "window": self.window,
+            "min_count": self.min_count,
+            "negative": self.negative,
+            "ns_exponent": self.ns_exponent,
+            "sg": self.sg,
+            "epochs": self.epochs,
+            "word2vec_model": self.model,
+        }
+    
+    def _set_model_state(self, model_state: Dict[str, Any]) -> None:
+        """Set model state from deserialized data."""
+        self.item_vectors = model_state.get("item_vectors", {})
+        self.size = model_state.get("size", 100)
+        self.window = model_state.get("window", 5)
+        self.min_count = model_state.get("min_count", 1)
+        self.negative = model_state.get("negative", 5)
+        self.ns_exponent = model_state.get("ns_exponent", 0.75)
+        self.sg = model_state.get("sg", 1)
+        self.epochs = model_state.get("epochs", 5)
+        
+        # Restore Word2Vec model if available
+        word2vec_model = model_state.get("word2vec_model")
+        if word2vec_model is not None:
+            self.model = word2vec_model
+        else:
+            # Create a new model with saved parameters
+            self.model = Word2Vec(
+                vector_size=self.size,
+                window=self.window,
+                min_count=self.min_count,
+                negative=self.negative,
+                ns_exponent=self.ns_exponent,
+                sg=self.sg,
+                epochs=self.epochs,
+                workers=0,  # Use all available cores
+            )
+            
+    def get_item_vectors(self, item_ids: List[Union[str, int]]) -> NDArray[np.float32]:
+        """Get item vectors for specified items.
+        
+        Args:
+            item_ids: List of item IDs
+            
+        Returns:
+            Item vectors matrix
+        """
+        # Convert all item IDs to strings for lookup in the item_vectors dictionary
+        str_item_ids = [str(item_id) for item_id in item_ids]
+        
+        # Get vectors for the items that exist in our dictionary
+        vectors = []
+        for item_id in str_item_ids:
+            if item_id in self.item_vectors:
+                vectors.append(self.item_vectors[item_id])
+            else:
+                # If item not found, add a zero vector
+                vectors.append(np.zeros(self.size, dtype=np.float32))
+        
+        if not vectors:
+            return np.array([], dtype=np.float32)
+            
+        return np.array(vectors, dtype=np.float32)
+
+
+# Register the model
+ModelRegistry.register("item2vec", Item2VecModel)

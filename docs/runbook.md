@@ -186,6 +186,22 @@ For incremental data loading, place new event data in Parquet format in the `/da
 
 The update worker will automatically detect and process these files based on their modification time.
 
+#### Real‑time streaming helper
+
+If you prefer a **push based** approach you can run the built‑in streaming
+ingest loop which watches a directory and appends any newly created parquet
+file to the ``events`` table:
+
+```bash
+# Poll every 5 s (default) for new parquet files.
+recsys-lite stream-ingest data/incremental --db data/recsys.db
+```
+
+This requires no extra dependencies – the implementation relies on simple
+directory polling so it works in containerised as well as serverless
+environments.  Already processed files are remembered for the lifetime of the
+process to avoid duplicate imports.
+
 ```bash
 # Manual incremental load (if needed)
 recsys-lite ingest \
@@ -215,6 +231,7 @@ RecSys-Lite supports multiple recommendation models. Each model has specific str
 | item2vec | Captures item similarity | Similar item recommendations |
 | LightFM | Handles cold start, uses item features | New items, content-rich catalogs |
 | GRU4Rec | Captures sequential patterns | Session-based recommendations |
+| EASE | High accuracy, closed‑form linear model | General CF (no user factors) |
 
 ### Initial Training
 
@@ -241,6 +258,11 @@ recsys-lite train lightfm \
 recsys-lite train gru4rec \
   --db data/recsys.db \
   --output model_artifacts/gru4rec
+
+# Train EASE‑R model
+recsys-lite train ease \
+  --db data/recsys.db \
+  --output model_artifacts/ease
 ```
 
 ### Hyperparameter Optimization

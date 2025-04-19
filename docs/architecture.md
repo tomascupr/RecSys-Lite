@@ -146,9 +146,10 @@ graph TD
 ## Data Flow
 
 1. **Ingestion**:
-   - Events and items are loaded into DuckDB via the CLI
+   - Events and items are loaded into DuckDB via the CLI (bulk) or the
+     `stream-ingest` helper which watches a directory for new parquet files.
    - DuckDB provides efficient querying for model training
-   - Supports both batch and incremental ingestion
+   - Supports batch, streaming, and incremental ingestion modes
 
 2. **Training**:
    - Models are trained on the ingested data

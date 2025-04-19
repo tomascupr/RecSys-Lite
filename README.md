@@ -15,6 +15,7 @@ A lightweight recommendation system designed for small e-commerce shops running 
   - Item2Vec embeddings via `gensim`
   - Hybrid matrix factorization via `LightFM`
   - GRU4Rec session-based model via PyTorch
+  - EASE‑R linear item‑item model (state‑of‑the‑art accuracy, CPU friendly)
 
 - **Hyperparameter Optimization**:
   - Automatic tuning via Optuna
@@ -76,6 +77,9 @@ docker compose -f docker/docker-compose.yml up -d
 ```bash
 # Ingest data into DuckDB
 recsys-lite ingest --events path/to/events.parquet --items path/to/items.csv --db recsys.db
+
+# (Optional) continuously append new *.parquet files that appear in a directory
+recsys-lite stream-ingest data/incremental --db recsys.db --poll-interval 5
 ```
 
 ### Training Models
@@ -86,6 +90,9 @@ recsys-lite train als --db recsys.db --output model_artifacts/als
 
 # Train item2vec model
 recsys-lite train item2vec --db recsys.db --output model_artifacts/item2vec
+
+# Train EASE-R model
+recsys-lite train ease --db recsys.db --output model_artifacts/ease
 
 # Run hyperparameter optimization
 recsys-lite optimize als --db recsys.db --trials 20 --metric ndcg@20
@@ -132,6 +139,7 @@ function App() {
 | Command | Description | Options |
 |---------|-------------|---------|
 | `ingest` | Ingest data into DuckDB | `--events <parquet>`, `--items <csv>`, `--db <path>` |
+| `stream-ingest` | Watch a directory and append new parquet files to `events` table | `--poll-interval <sec>`, `--db <path>` |
 | `gdpr export-user` | Export user data | `--user-id <id>`, `--db <path>`, `--output <json>` |
 | `gdpr delete-user` | Delete user data | `--user-id <id>`, `--db <path>` |
 
@@ -144,6 +152,7 @@ function App() {
 | `train item2vec` | Train Item2Vec model | `--db <path>`, `--output <dir>`, `--test-size <float>` |
 | `train lightfm` | Train LightFM model | `--db <path>`, `--output <dir>`, `--test-size <float>` |
 | `train gru4rec` | Train GRU4Rec model | `--db <path>`, `--output <dir>`, `--test-size <float>` |
+| `train ease` | Train EASE‑R linear item‑based model | `--db <path>`, `--output <dir>` |
 
 ### Hyperparameter Optimization
 

@@ -11,6 +11,7 @@ from recsys_lite.models.base import (
 )
 from recsys_lite.models.bpr import BPRModel
 from recsys_lite.models.item2vec import Item2VecModel
+from recsys_lite.models.ease import EASEModel
 
 # Use mock implementations in CI environment where building real dependencies fails
 if os.environ.get("CI") == "true":
@@ -35,6 +36,7 @@ else:
 ModelRegistry.register("als", ALSModel)
 ModelRegistry.register("bpr", BPRModel)
 ModelRegistry.register("item2vec", Item2VecModel)
+ModelRegistry.register("ease", EASEModel)
 ModelRegistry.register("lightfm", LightFMModel)
 ModelRegistry.register("gru4rec", GRU4Rec)
 
@@ -46,6 +48,7 @@ __all__ = [
     "ALSModel",
     "BPRModel",
     "Item2VecModel",
+    "EASEModel",
     "LightFMModel",
     "GRU4Rec",
 ]

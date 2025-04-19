@@ -14,6 +14,8 @@ from scipy.sparse import csr_matrix
 
 from recsys_lite.indexing import FaissIndexBuilder
 from recsys_lite.ingest import ingest_data
+# We import lazily for stream to avoid optional dependency issues.
+from recsys_lite.ingest import stream_events
 from recsys_lite.models import (
     ALSModel,
     BaseRecommender,
@@ -43,6 +45,7 @@ class ModelType(str, Enum):
     ITEM2VEC = "item2vec"
     LIGHTFM = "lightfm"
     GRU4REC = "gru4rec"
+    EASE = "ease"
 
 
 class MetricType(str, Enum):
@@ -63,6 +66,34 @@ def ingest(
     """Ingest data into DuckDB database."""
     ingest_data(events, items, db)
     typer.echo(f"Data ingested successfully into {db}")
+
+
+# ---------------------------------------------------------------------------
+# Streaming ingest command
+# ---------------------------------------------------------------------------
+
+
+@app.command(name="stream-ingest")
+def stream_ingest(
+    events_dir: Path = typer.Argument(..., help="Directory containing incremental parquet files"),
+    db: Path = typer.Option("recsys.db", help="DuckDB database to append to"),
+    poll_interval: int = typer.Option(5, help="Polling interval in seconds"),
+) -> None:
+    """Run a simple *file based* streaming ingest loop.
+
+    The command watches *events_dir* for new ``*.parquet`` files and appends
+    their contents to the ``events`` table in the specified DuckDB database.
+    """
+
+    typer.echo(
+        f"Starting streaming ingest – watching '{events_dir}' every {poll_interval}s …"
+    )
+
+    try:
+        stream_events(events_dir, db, poll_interval=poll_interval)
+    except FileNotFoundError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1)
 
 
 @app.command()
@@ -119,6 +150,8 @@ def train(
                 "learning_rate": 0.001,
                 "n_epochs": 10,
             }
+        elif model_type == ModelType.EASE:
+            params = {"lambda_": 0.5}
 
     typer.echo(f"Training {model_type.value} model with parameters: {params}")
 
@@ -185,6 +218,12 @@ def train(
         if isinstance(model, GRU4Rec):
             model.fit(train_matrix, sessions=sessions)
 
+    elif model_type == ModelType.EASE:
+        from recsys_lite.models import EASEModel  # local import
+
+        model = cast(BaseRecommender, EASEModel(**params))
+        model.fit(train_matrix)
+
     # Save model and mappings
     output_dir = output / model_type.value
     os.makedirs(output_dir, exist_ok=True)
@@ -209,6 +248,12 @@ def train(
             # Use Item2Vec-specific method - directly access it with the instance
             item_vector_keys = list(item_to_idx.keys())
             item_vectors = model.get_item_vectors_matrix(item_vector_keys)
+    elif model_type == ModelType.EASE:
+        # Use item-item similarity rows as vectors
+        try:
+            item_vectors = model.item_similarity.astype("float32")  # type: ignore[attr-defined]
+        except Exception:
+            item_vectors = None
 
     # If we have item vectors, create the index
     if item_vectors is not None:

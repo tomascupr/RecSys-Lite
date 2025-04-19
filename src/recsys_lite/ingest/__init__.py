@@ -1,5 +1,5 @@
 """Data ingestion module for RecSys-Lite."""
 
-from .ingest import ingest_data
+from .ingest import ingest_data, stream_events
 
-__all__ = ["ingest_data"]
+__all__ = ["ingest_data", "stream_events"]

@@ -30,7 +30,10 @@ jobs:
       - name: Ruff lint
         run: poetry run ruff src              # fails only on new issues
       - name: Type-check with mypy
-        run: poetry run mypy --strict src
+        run: |
+          # Run mypy with strict flag and fail CI if there are errors
+          set -e  # Ensure script fails if any command fails
+          poetry run mypy --strict src
       - name: Run tests and capture logs
         run: |
           mkdir -p artifacts logs

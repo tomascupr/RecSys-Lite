@@ -155,6 +155,21 @@ function App() {
 }
 ```
 
+## Development
+
+RecSys-Lite is actively developed with focus on lightweight recommendation algorithms, quality, and maintainability.
+
+```bash
+# Install development dependencies
+poetry install
+
+# Run linting
+poetry run ruff .
+
+# Run tests
+poetry run pytest
+```
+
 ## CLI Commands Reference
 
 ### Data Management
@@ -277,7 +292,7 @@ Returns the health status of the API.
 ```json
 {
   "status": "ok",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "model_type": "als",
   "uptime_seconds": 3600
 }

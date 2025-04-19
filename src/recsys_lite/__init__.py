@@ -4,15 +4,16 @@
 # ---------------------------------------------------------------------------
 
 import os as _os
+from typing import Any, Dict, List, Tuple, Union
 
 # Set these only if the user has not configured them already.
 _os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 _os.environ.setdefault("OMP_NUM_THREADS", "1")
 _os.environ.setdefault("MKL_NUM_THREADS", "1")
 
-# Only use stubs in actual CI environment, not during local testing
-# Determine if we're in a real CI environment (GitHub Actions, etc.)
-is_ci = _os.environ.get("CI", "").lower() == "true" or _os.environ.get("GITHUB_ACTIONS", "").lower() == "true"
+# Use stubs when the CI environment variable is set
+# This allows for simpler testing and development without heavy dependencies
+is_ci = _os.environ.get("CI", "").lower() == "true"
 
 # ---------------------------------------------------------------------------
 # Numpy polyfit guard – The linked OpenBLAS build sporadically segfaults when
@@ -47,10 +48,10 @@ def _install_numpy_stub() -> None:  # pragma: no cover – executed at import ti
     _np = _types.ModuleType("numpy")
 
     # Basic constructors ----------------------------------------------------
-    def _array(data, *_, **__):  # noqa: D401 – just a stub
+    def _array(data: Any, *_, **__) -> List[Any]:  # noqa: D401 – just a stub
         return list(data)
 
-    def _zeros(shape, *_, **__):  # noqa: D401
+    def _zeros(shape: Union[int, Tuple[int, ...]], *_, **__) -> Union[List[int], List[List[int]]]:  # noqa: D401
         if isinstance(shape, int):
             return [0] * shape
         # simple multi-dimensional – produce nested lists
@@ -58,7 +59,7 @@ def _install_numpy_stub() -> None:  # pragma: no cover – executed at import ti
             return [[0] * shape[1] for _ in range(shape[0])]
         return [0] * (shape[0] if shape else 0)
 
-    def _arange(stop, *args, **kwargs):  # noqa: D401
+    def _arange(stop: int, *args: int, **kwargs: Any) -> List[int]:  # noqa: D401
         start = 0
         step = 1
         if len(args) == 1:
@@ -103,7 +104,7 @@ def _install_numpy_stub() -> None:  # pragma: no cover – executed at import ti
     _np.random = _RandomNamespace()  # type: ignore[attr-defined]
 
     # Provide the polyfit stub expected by some code paths ------------------
-    def _polyfit(x, y, deg, *args, **kwargs):  # noqa: D401
+    def _polyfit(x: List[Any], y: List[Any], deg: int, *args: Any, **kwargs: Any) -> List[int]:  # noqa: D401
         return _zeros(deg + 1)
 
     _np.polyfit = _polyfit  # type: ignore[attr-defined]
@@ -148,18 +149,18 @@ def _install_scipy_stub() -> None:  # pragma: no cover
     _sp_sparse_mod = _types.ModuleType("scipy.sparse")
 
     class _LilMatrix:  # Very small subset
-        def __init__(self, shape, dtype=None):
+        def __init__(self, shape: Tuple[int, int], dtype: Any = None) -> None:
             self._shape = shape
-            self._data: dict[tuple[int, int], float] = {}
+            self._data: Dict[Tuple[int, int], float] = {}
 
-        def __setitem__(self, idx, value):
+        def __setitem__(self, idx: Tuple[int, int], value: float) -> None:
             self._data[idx] = value
 
-        def tocsr(self):  # noqa: D401
+        def tocsr(self) -> "_CsrMatrix":  # noqa: D401
             return _CsrMatrix(self._shape, self._data.copy())
 
     class _CsrMatrix:
-        def __init__(self, shape, data):
+        def __init__(self, shape: Tuple[int, int], data: Dict[Tuple[int, int], float]) -> None:
             self.shape = shape
             self._data = data
 
@@ -199,13 +200,13 @@ def _install_faiss_stub() -> None:  # pragma: no cover
             self.d = dim  # Faiss stores dimensionality in `.d`
             self.nprobe = 10
 
-        def add(self, vectors):  # noqa: D401
+        def add(self, vectors: Any) -> None:  # noqa: D401
             self._vectors = vectors  # noqa: SLF001 – simple field
 
-        def train(self, vectors):  # noqa: D401 – no‑op
+        def train(self, vectors: Any) -> None:  # noqa: D401 – no‑op
             pass
 
-        def search(self, query, k):  # noqa: D401
+        def search(self, query: Any, k: int) -> Tuple[Any, Any]:  # noqa: D401
             n = len(query) if isinstance(query, list) else 1
             # Distances all zeros, indices sequential – sufficient for asserts
             dists = _np.zeros((n, k)) if _np else [[0] * k for _ in range(n)]
@@ -229,23 +230,23 @@ def _install_faiss_stub() -> None:  # pragma: no cover
     _faiss.IndexFlatL2 = lambda dim: _FakeIndex(dim)  # type: ignore[attr-defined]
     _faiss.IndexFlatIP = lambda dim: _FakeIndex(dim)  # type: ignore[attr-defined]
 
-    def _index_ivf_flat(quantizer, dim, nlist, metric):  # noqa: D401
+    def _index_ivf_flat(quantizer: Any, dim: int, nlist: int, metric: Any) -> "_FakeIndex":  # noqa: D401
         return _FakeIndex(dim)
 
     _faiss.IndexIVFFlat = _index_ivf_flat  # type: ignore[attr-defined]
     _faiss.IndexHNSWFlat = lambda dim, m: _FakeIndex(dim)  # type: ignore[attr-defined]
 
-    def _normalize_L2(vecs):  # noqa: D401 – no‑op
+    def _normalize_L2(vecs: Any) -> Any:  # noqa: D401 – no‑op
         return vecs
 
     _faiss.normalize_L2 = _normalize_L2  # type: ignore[attr-defined]
 
     # Add functions for reading/writing indices
-    def _write_index(index, path):  # noqa: D401 - stub
+    def _write_index(index: Any, path: str) -> None:  # noqa: D401 - stub
         # Just a stub - does nothing in test mode
         pass
 
-    def _read_index(path):  # noqa: D401 - stub
+    def _read_index(path: str) -> "_FakeIndex":  # noqa: D401 - stub
         # Return a fake index
         return _FakeIndex(100)  # Default 100-dim index
 

@@ -75,6 +75,9 @@ warn_unreachable = false  # Disable unreachable statement warnings globally
 # For any method assign errors in the stub modules, we need to ignore them
 disallow_assigning_to_methods = false
 
+# Set up proper type checking for numpy, we need to use numpy.typing properly
+plugins = ["numpy.typing.mypy_plugin"]
+
 # Handle third-party libraries without type stubs
 [[tool.mypy.overrides]]
 module = [
@@ -105,10 +108,16 @@ module = [
 ignore_errors = true
 warn_unreachable = false
 
-# Ignore __init__ module errors - contains stub implementations
+# Ignore __init__ module errors - contains stub implementations for CI environment
 [[tool.mypy.overrides]]
 module = ["recsys_lite.__init__"]
 ignore_errors = true
+
+# Ignore attribute errors and method assignments specific to the stub implementations
+[[tool.mypy.overrides]]
+module = ["recsys_lite.__init__"]
+disallow_assigning_to_methods = false
+disable_error_code = ["attr-defined", "method-assign", "no-untyped-def", "no-untyped-call", "return-value"]
 
 [tool.ruff]
 line-length = 120           # increased for better readability

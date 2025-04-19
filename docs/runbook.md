@@ -184,7 +184,7 @@ recsys-lite ingest \
 
 For incremental data loading, place new event data in Parquet format in the `/data/incremental` directory with filenames containing timestamps (e.g., `events_20230315.parquet`).
 
-The update worker will automatically detect and process these files based on their modification time.
+The update worker will automatically detect and process these files based on their modification time. This works in both development and production environments.
 
 #### Real‑time streaming helper
 

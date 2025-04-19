@@ -34,12 +34,11 @@ class EASEModel(BaseRecommender, FactorizationModelMixin):
     # BaseRecommender API
     # ---------------------------------------------------------------------
 
-    def fit(self, user_item_matrix: sp.csr_matrix, **kwargs: Any) -> None:  # type: ignore[override]
+    def fit(self, user_item_matrix: sp.csr_matrix, **kwargs: Any) -> None:
         n_items = user_item_matrix.shape[1]
 
         # **Toy implementation** – identity matrix as similarity proxy
-        sim = [[1.0 if i == j else 0.0 for j in range(n_items)] for i in range(n_items)]
-        self.item_similarity = sim  # type: ignore[assignment]
+        self.item_similarity = np.eye(n_items, dtype=np.float32)
 
     def recommend(
         self,
@@ -47,8 +46,7 @@ class EASEModel(BaseRecommender, FactorizationModelMixin):
         user_items: sp.csr_matrix,
         n_items: int = 10,
         **kwargs: Any,
-    ) -> Tuple[NDArray[np.int_], NDArray[np.float32]]:  # type: ignore[override]
-
+    ) -> Tuple[NDArray[np.int_], NDArray[np.float32]]:
         if self.item_similarity is None:
             return np.array([], dtype=int), np.array([], dtype=np.float32)
 
@@ -59,10 +57,10 @@ class EASEModel(BaseRecommender, FactorizationModelMixin):
         scores = [sum(col) for col in zip(*self.item_similarity, strict=False)]
         candidate_indices = [i for i in range(len(scores)) if i not in interacted_items]
 
-        top_indices_list = candidate_indices[: n_items]
-        top_scores_list = [scores[i] for i in top_indices_list]
+        top_indices = np.array(candidate_indices[:n_items], dtype=np.int_)
+        top_scores = np.array([scores[i] for i in top_indices], dtype=np.float32)
 
-        return top_indices_list, top_scores_list
+        return top_indices, top_scores
 
     # ------------------------------------------------------------------
     # Persistence helpers

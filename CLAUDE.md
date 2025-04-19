@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **IMPORTANT:** Never commit changes to git unless explicitly asked. Only make git commits when the user specifically requests it.
 
+**IMPORTANT:** Never disable tests, linting, or type checking in CI scripts without explicit user permission.
+
 ## Build Commands
 - Install: `poetry install`
 - Run CLI: `recsys-lite --help`

@@ -16,9 +16,7 @@ poetry run ruff src
 
 # Step 3: Type checking
 echo "🔎 Running mypy type checking..."
-# Temporarily disabled to allow changes to be pushed
-# poetry run mypy src
-echo "Mypy type checking temporarily skipped"
+poetry run mypy src
 
 # Step 4: Run tests
 echo "🧪 Running tests..."

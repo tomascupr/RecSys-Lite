@@ -5,7 +5,7 @@ import logging
 import os
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, Optional, cast
+from typing import Any, Dict, List, Optional, cast
 
 import duckdb
 import numpy as np
@@ -22,8 +22,10 @@ from recsys_lite.models import (
     BaseRecommender,
     BPRModel,
     GRU4Rec,
+    HybridModel,
     Item2VecModel,
     LightFMModel,
+    TextEmbeddingModel,
 )
 from recsys_lite.optimization import OptunaOptimizer
 
@@ -47,6 +49,8 @@ class ModelType(str, Enum):
     LIGHTFM = "lightfm"
     GRU4REC = "gru4rec"
     EASE = "ease"
+    TEXT_EMBEDDING = "text_embedding"
+    HYBRID = "hybrid"
 
 
 class MetricType(str, Enum):
@@ -202,642 +206,635 @@ def queue_ingest_command(
         raise typer.Exit(code=1) from exc
 
 
+# ---------------------------------------------------------------------------
+# GDPR commands
+# ---------------------------------------------------------------------------
+
+
+@app.command()
+def gdpr(ctx: typer.Context) -> None:
+    """GDPR compliance tools for data export and user deletion."""
+    # Called without subcommand
+    if ctx.invoked_subcommand is None:
+        typer.echo(ctx.get_help())
+
+
+# Create a GDPR subgroup
+gdpr_app = typer.Typer()
+app.add_typer(gdpr_app, name="gdpr")
+
+
+@gdpr_app.command(name="export-user")
+def gdpr_export_user(
+    user_id: str = typer.Argument(..., help="User ID to export data for"),
+    db: Path = typer.Option("recsys.db", help="DuckDB database path"),
+    output: Path = typer.Option(None, help="Output JSON file path (defaults to user_id.json)"),
+) -> None:
+    """Export all data for a specific user (GDPR compliance)."""
+    if output is None:
+        output = Path(f"{user_id}.json")
+    
+    # Connect to database
+    conn = duckdb.connect(str(db))
+    
+    # Query user events
+    events_df = conn.execute(
+        "SELECT * FROM events WHERE user_id = ?", 
+        [user_id]
+    ).fetchdf()
+    
+    # Get item metadata for interacted items
+    if len(events_df) > 0:
+        item_ids = events_df["item_id"].tolist()
+        placeholders = ", ".join(["?"] * len(item_ids))
+        item_df = conn.execute(
+            f"SELECT * FROM items WHERE item_id IN ({placeholders})",
+            item_ids
+        ).fetchdf()
+    else:
+        item_df = conn.execute("SELECT * FROM items WHERE 1=0").fetchdf()
+    
+    # Prepare export data
+    export_data = {
+        "user_id": user_id,
+        "export_timestamp": int(os.time()),
+        "events": events_df.to_dict(orient="records"),
+        "items": item_df.to_dict(orient="records"),
+    }
+    
+    # Write to file
+    with open(output, "w") as f:
+        json.dump(export_data, f, indent=2)
+    
+    typer.echo(f"User data exported to {output}")
+
+
+@gdpr_app.command(name="delete-user")
+def gdpr_delete_user(
+    user_id: str = typer.Argument(..., help="User ID to delete data for"),
+    db: Path = typer.Option("recsys.db", help="DuckDB database path"),
+    confirm: bool = typer.Option(False, "--confirm", help="Confirm deletion without prompting"),
+) -> None:
+    """Delete all data for a specific user (GDPR compliance)."""
+    # Connect to database
+    conn = duckdb.connect(str(db))
+    
+    # Count user events
+    event_count = conn.execute(
+        "SELECT COUNT(*) FROM events WHERE user_id = ?",
+        [user_id]
+    ).fetchone()[0]
+    
+    if event_count == 0:
+        typer.echo(f"No data found for user {user_id}")
+        return
+    
+    # Confirm deletion
+    if not confirm:
+        typer.confirm(
+            f"This will delete {event_count} events for user {user_id}. Continue?",
+            abort=True,
+        )
+    
+    # Delete user data
+    conn.execute("DELETE FROM events WHERE user_id = ?", [user_id])
+    
+    # Add to deleted users table (create if not exists)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS deleted_users (
+            user_id VARCHAR,
+            deletion_timestamp BIGINT
+        )
+    """)
+    
+    conn.execute(
+        "INSERT INTO deleted_users VALUES (?, ?)",
+        [user_id, int(os.time())]
+    )
+    
+    typer.echo(f"Deleted {event_count} events for user {user_id}")
+    typer.echo("Note: User vectors will be removed during the next model update")
+
+
+# ---------------------------------------------------------------------------
+# Model commands
+# ---------------------------------------------------------------------------
+
+
 @app.command()
 def train(
-    model_type: ModelType = typer.Argument(..., help="Model type to train"),
-    db: Path = typer.Option("recsys.db", help="Path to DuckDB database"),
-    output: Path = typer.Option("model_artifacts", help="Output directory for model artifacts"),
-    test_size: float = typer.Option(0.2, help="Fraction of data to use for testing"),
-    seed: int = typer.Option(42, help="Random seed for reproducibility"),
+    model_type: ModelType = typer.Argument(..., help="Type of model to train"),
+    db: Path = typer.Option("recsys.db", help="DuckDB database path"),
+    output: Path = typer.Option(None, help="Output directory"),
+    test_size: float = typer.Option(0.2, help="Test set size for evaluation"),
+    seed: int = typer.Option(42, help="Random seed"),
     params_file: Optional[Path] = typer.Option(None, help="JSON file with model parameters"),
 ) -> None:
     """Train a recommendation model."""
-    # Load parameters from file if provided
-    if params_file:
+    # Set default output directory if not specified
+    if output is None:
+        output = Path(f"model_artifacts/{model_type.value}")
+    
+    # Create output directory
+    output.mkdir(parents=True, exist_ok=True)
+    
+    # Load data from DuckDB
+    logger.info(f"Loading data from {db}")
+    conn = duckdb.connect(str(db))
+    
+    # Get user-item interaction matrix
+    user_item_df = conn.execute("""
+        SELECT user_id, item_id, CAST(SUM(qty) AS FLOAT) as interaction
+        FROM events
+        GROUP BY user_id, item_id
+    """).fetchdf()
+    
+    # Get item metadata
+    item_df = conn.execute("SELECT * FROM items").fetchdf()
+    
+    # Create mappings
+    logger.info("Creating user and item mappings")
+    unique_users = user_item_df["user_id"].unique()
+    unique_items = user_item_df["item_id"].unique()
+    
+    user_mapping = {user: idx for idx, user in enumerate(unique_users)}
+    item_mapping = {item: idx for idx, item in enumerate(unique_items)}
+    reverse_user_mapping = {idx: user for user, idx in user_mapping.items()}
+    reverse_item_mapping = {idx: item for item, idx in item_mapping.items()}
+    
+    # Create item metadata dictionary
+    item_data = {}
+    for _, row in item_df.iterrows():
+        item_id = row["item_id"]
+        item_data[item_id] = row.to_dict()
+    
+    # Create user-item matrix
+    if model_type == ModelType.TEXT_EMBEDDING:
+        # For text embedding, we don't need to create a matrix
+        user_item_matrix = None
+    else:
+        # Create sparse matrix for collaborative filtering models
+        rows = []
+        cols = []
+        data = []
+        
+        for _, row in user_item_df.iterrows():
+            user_idx = user_mapping[row["user_id"]]
+            item_idx = item_mapping[row["item_id"]]
+            interaction = row["interaction"]
+            
+            rows.append(user_idx)
+            cols.append(item_idx)
+            data.append(interaction)
+        
+        user_item_matrix = csr_matrix(
+            (data, (rows, cols)),
+            shape=(len(user_mapping), len(item_mapping))
+        )
+    
+    # Load parameters from file if specified
+    params = {}
+    if params_file and params_file.exists():
         with open(params_file, "r") as f:
             params = json.load(f)
-    else:
-        # Default parameters for each model type
-        if model_type == ModelType.ALS:
-            params = {
-                "factors": 128,
-                "regularization": 0.01,
-                "alpha": 1.0,
-                "iterations": 15,
-            }
-        elif model_type == ModelType.BPR:
-            params = {
-                "factors": 100,
-                "learning_rate": 0.01,
-                "regularization": 0.01,
-                "iterations": 100,
-            }
-        elif model_type == ModelType.ITEM2VEC:
-            params = {
-                "vector_size": 100,
-                "window": 5,
-                "min_count": 1,
-                "sg": 1,
-                "epochs": 5,
-            }
-        elif model_type == ModelType.LIGHTFM:
-            params = {
-                "no_components": 100,
-                "learning_rate": 0.05,
-                "loss": "warp",
-                "epochs": 50,
-            }
-        elif model_type == ModelType.GRU4REC:
-            params = {
-                "hidden_size": 100,
-                "n_layers": 1,
-                "dropout": 0.1,
-                "batch_size": 32,
-                "learning_rate": 0.001,
-                "n_epochs": 10,
-            }
-        elif model_type == ModelType.EASE:
-            params = {"lambda_": 0.5}
-
-    typer.echo(f"Training {model_type.value} model with parameters: {params}")
-
-    # Connect to database
-    conn = duckdb.connect(str(db))
-
-    # Load data
-    events_df = conn.execute("SELECT user_id, item_id, qty FROM events").fetchdf()
-
-    # Create user and item ID mappings
-    unique_users = events_df["user_id"].unique()
-    unique_items = events_df["item_id"].unique()
-
-    user_to_idx = {user: i for i, user in enumerate(unique_users)}
-    item_to_idx = {item: i for i, item in enumerate(unique_items)}
-
-    # Create train/test split
-    np.random.seed(seed)
-    train_mask = np.random.rand(len(events_df)) >= test_size
-
-    train_df = events_df[train_mask]
-    test_df = events_df[~train_mask]
-
-    # Create user-item matrices
-    train_matrix = _create_interaction_matrix(train_df, user_to_idx, item_to_idx)
-    _create_interaction_matrix(test_df, user_to_idx, item_to_idx)
-
-    # Train model based on type
-    model: BaseRecommender
-
+    
+    # Initialize model based on type with parameters
+    logger.info(f"Initializing {model_type.value} model")
+    
     if model_type == ModelType.ALS:
-        model = cast(BaseRecommender, ALSModel(**params))
-        model.fit(train_matrix)
-    elif model_type == ModelType.BPR:
-        model = cast(BaseRecommender, BPRModel(**params))
-        model.fit(train_matrix)
-    elif model_type == ModelType.ITEM2VEC:
-        # Create session data for item2vec
-        sessions = []
-        for user in unique_users:
-            user_items = events_df[events_df["user_id"] == user]["item_id"].tolist()
-            if len(user_items) > 1:
-                sessions.append(user_items)
-
-        model = cast(BaseRecommender, Item2VecModel(**params))
-        # Item2Vec needs special handling for fit
-        if isinstance(model, Item2VecModel):
-            model.fit(train_matrix, user_sessions=sessions)
-    elif model_type == ModelType.LIGHTFM:
-        model = cast(BaseRecommender, LightFMModel(**params))
-        model.fit(train_matrix)
-    elif model_type == ModelType.GRU4REC:
-        # Create session data for GRU4Rec
-        sessions = []
-        for user in unique_users:
-            user_items = events_df[events_df["user_id"] == user]["item_id"].tolist()
-            if len(user_items) > 1:
-                # Convert item IDs to indices
-                user_items_idx = [item_to_idx[item] for item in user_items]
-                sessions.append(user_items_idx)
-
-        model = cast(BaseRecommender, GRU4Rec(n_items=len(unique_items), **params))
-        # GRU4Rec needs special handling for fit
-        if isinstance(model, GRU4Rec):
-            model.fit(train_matrix, sessions=sessions)
-
-    elif model_type == ModelType.EASE:
-        from recsys_lite.models import EASEModel  # local import
-
-        model = cast(BaseRecommender, EASEModel(**params))
-        model.fit(train_matrix)
-
-    # Save model and mappings
-    output_dir = output / model_type.value
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Save mappings
-    with open(output_dir / "user_mapping.json", "w") as f:
-        json.dump(user_to_idx, f)
-
-    with open(output_dir / "item_mapping.json", "w") as f:
-        json.dump(item_to_idx, f)
-
-    # Create Faiss index for item vectors
-    item_vectors: Optional[np.ndarray] = None
-
-    if model_type in [ModelType.ALS, ModelType.BPR, ModelType.LIGHTFM]:
-        # These models use get_item_factors()
-        if hasattr(model, "get_item_factors"):
-            item_vectors = model.get_item_factors()
-    elif model_type == ModelType.ITEM2VEC:
-        # Item2Vec needs special handling for getting item vectors
-        if isinstance(model, Item2VecModel):
-            # Use Item2Vec-specific method - directly access it with the instance
-            item_vector_keys = list(item_to_idx.keys())
-            item_vectors = model.get_item_vectors_matrix(item_vector_keys)
-    elif model_type == ModelType.EASE:
-        # Use item-item similarity rows as vectors
-        try:
-            item_vectors = model.item_similarity.astype("float32")  # type: ignore[attr-defined]
-        except Exception:
-            item_vectors = None
-
-    # If we have item vectors, create the index
-    if item_vectors is not None:
-        index_builder = FaissIndexBuilder(
-            vectors=item_vectors,
-            ids=list(item_to_idx.keys()),
-            index_type="IVF_Flat",
+        model = ALSModel(
+            factors=params.get("factors", 128),
+            regularization=params.get("regularization", 0.01),
+            alpha=params.get("alpha", 1.0),
+            iterations=params.get("iterations", 15),
         )
-        index_builder.save(str(output_dir / "faiss_index"))
+    elif model_type == ModelType.BPR:
+        model = BPRModel(
+            factors=params.get("factors", 100),
+            learning_rate=params.get("learning_rate", 0.05),
+            regularization=params.get("regularization", 0.01),
+            iterations=params.get("iterations", 100),
+        )
+    elif model_type == ModelType.ITEM2VEC:
+        model = Item2VecModel(
+            vector_size=params.get("vector_size", 100),
+            window=params.get("window", 5),
+            min_count=params.get("min_count", 5),
+            sg=params.get("sg", 1),
+            epochs=params.get("epochs", 5),
+        )
+    elif model_type == ModelType.LIGHTFM:
+        model = LightFMModel(
+            no_components=params.get("no_components", 64),
+            learning_rate=params.get("learning_rate", 0.05),
+            loss=params.get("loss", "warp"),
+            epochs=params.get("epochs", 50),
+        )
+    elif model_type == ModelType.GRU4REC:
+        model = GRU4Rec(
+            hidden_size=params.get("hidden_size", 100),
+            n_layers=params.get("n_layers", 1),
+            dropout=params.get("dropout", 0.1),
+            batch_size=params.get("batch_size", 64),
+            learning_rate=params.get("learning_rate", 0.001),
+            n_epochs=params.get("n_epochs", 10),
+        )
+    elif model_type == ModelType.EASE:
+        model = LightFMModel(
+            lambda_=params.get("lambda_", 0.5),
+        )
+    elif model_type == ModelType.TEXT_EMBEDDING:
+        model = TextEmbeddingModel(
+            model_name=params.get("model_name", "all-MiniLM-L6-v2"),
+            item_text_fields=params.get("item_text_fields", ["title", "category", "brand", "description"]),
+            field_weights=params.get("field_weights", {
+                "title": 2.0,
+                "category": 1.0,
+                "brand": 1.0,
+                "description": 3.0,
+            }),
+            normalize_vectors=params.get("normalize_vectors", True),
+            batch_size=params.get("batch_size", 64),
+            max_length=params.get("max_length", 512),
+        )
+    elif model_type == ModelType.HYBRID:
+        # For hybrid, we don't support direct training
+        typer.echo("Error: Hybrid models should be created using the train-hybrid command")
+        raise typer.Exit(code=1)
+    else:
+        typer.echo(f"Unknown model type: {model_type}")
+        raise typer.Exit(code=1)
+    
+    # Train model
+    logger.info(f"Training {model_type.value} model")
+    
+    if model_type == ModelType.TEXT_EMBEDDING:
+        # For text embedding, we need item data
+        model.fit(
+            user_item_matrix=user_item_matrix,
+            item_data=item_data,
+            output_dir=output,
+        )
+    else:
+        # For collaborative filtering models
+        model.fit(user_item_matrix)
+    
+    # Save model, mappings, and Faiss index
+    logger.info(f"Saving model and artifacts to {output}")
+    model.save_model(str(output))
+    
+    # Save mappings
+    with open(output / "user_mapping.json", "w") as f:
+        json.dump(user_mapping, f)
+    
+    with open(output / "item_mapping.json", "w") as f:
+        json.dump(item_mapping, f)
+    
+    # Create Faiss index for similarity search
+    logger.info("Building Faiss index")
+    index_builder = FaissIndexBuilder()
+    index_builder.build_index(
+        model=model,
+        item_mapping=item_mapping,
+        reverse_item_mapping=reverse_item_mapping,
+        output_dir=output / "faiss_index",
+    )
+    
+    logger.info(f"{model_type.value} model training complete")
 
-    typer.echo(f"Model trained and saved to {output_dir}")
+
+@app.command()
+def train_hybrid(
+    models_dir: List[Path] = typer.Argument(..., help="List of model directories to combine"),
+    output: Path = typer.Option(None, help="Output directory"),
+    weights: Optional[List[float]] = typer.Option(None, help="Model weights (comma-separated)"),
+    dynamic: bool = typer.Option(True, help="Use dynamic weighting based on user history"),
+    cold_start_threshold: int = typer.Option(5, help="Threshold for cold-start users"),
+    cold_start_strategy: str = typer.Option(
+        "content_boost",
+        help="Strategy for cold-start users (content_boost|content_only|equal)"
+    ),
+):
+    """Create a hybrid model combining multiple recommenders."""
+    # Set default output directory if not specified
+    if output is None:
+        output = Path("model_artifacts/hybrid")
+    
+    # Create output directory
+    output.mkdir(parents=True, exist_ok=True)
+    
+    # Load component models
+    logger.info(f"Loading {len(models_dir)} component models")
+    models = []
+    model_types = []
+    
+    for model_dir in models_dir:
+        # Determine model type from directory
+        model_files = list(model_dir.glob("*_model.pkl"))
+        if not model_files:
+            logger.warning(f"No model found in {model_dir}")
+            continue
+        
+        model_file = model_files[0]
+        model_type = model_file.stem.split("_")[0]
+        model_types.append(model_type)
+        
+        # Load model
+        try:
+            from recsys_lite.models import ModelRegistry
+            model = ModelRegistry.load_model(model_type, str(model_dir))
+            models.append(model)
+            logger.info(f"Loaded {model_type} model from {model_dir}")
+        except Exception as e:
+            logger.error(f"Error loading model from {model_dir}: {e}")
+    
+    if not models:
+        logger.error("No models could be loaded")
+        raise typer.Exit(code=1)
+    
+    # Parse weights if provided
+    weight_values = None
+    if weights:
+        weight_values = [float(w) for w in weights]
+        
+        # Validate weights
+        if len(weight_values) != len(models):
+            logger.warning(
+                f"Number of weights ({len(weight_values)}) doesn't match "
+                f"number of models ({len(models)}). Using equal weights."
+            )
+            weight_values = None
+    
+    # Initialize hybrid model
+    logger.info(f"Creating hybrid model with {len(models)} components")
+    hybrid_model = HybridModel(
+        models=models,
+        weights=weight_values,
+        dynamic_weighting=dynamic,
+        cold_start_threshold=cold_start_threshold,
+        cold_start_strategy=cold_start_strategy,
+    )
+    
+    # Save hybrid model
+    logger.info(f"Saving hybrid model to {output}")
+    hybrid_model.save_model(str(output))
+    
+    # Copy mappings from first model
+    first_model_dir = models_dir[0]
+    for mapping_file in ["user_mapping.json", "item_mapping.json"]:
+        src_path = first_model_dir / mapping_file
+        if src_path.exists():
+            import shutil
+            shutil.copy(src_path, output / mapping_file)
+    
+    # Create Faiss index
+    logger.info("Building Faiss index for hybrid model")
+    
+    # Load mappings
+    with open(output / "item_mapping.json", "r") as f:
+        item_mapping = json.load(f)
+    
+    reverse_item_mapping = {int(idx): item for item, idx in item_mapping.items()}
+    
+    index_builder = FaissIndexBuilder()
+    index_builder.build_index(
+        model=hybrid_model,
+        item_mapping=item_mapping,
+        reverse_item_mapping=reverse_item_mapping,
+        output_dir=output / "faiss_index",
+    )
+    
+    logger.info(f"Hybrid model ({'+'.join(model_types)}) creation complete")
 
 
 @app.command()
 def optimize(
-    model_type: ModelType = typer.Argument(..., help="Model type to optimize"),
-    db: Path = typer.Option("recsys.db", help="Path to DuckDB database"),
-    output: Path = typer.Option("model_artifacts", help="Output directory for model artifacts"),
+    model_type: ModelType = typer.Argument(..., help="Type of model to optimize"),
+    db: Path = typer.Option("recsys.db", help="DuckDB database path"),
+    output: Path = typer.Option(None, help="Output directory"),
     metric: MetricType = typer.Option(MetricType.NDCG_20, help="Evaluation metric"),
     trials: int = typer.Option(20, help="Number of optimization trials"),
-    test_size: float = typer.Option(0.2, help="Fraction of data to use for testing"),
-    seed: int = typer.Option(42, help="Random seed for reproducibility"),
+    test_size: float = typer.Option(0.2, help="Test set size for evaluation"),
+    seed: int = typer.Option(42, help="Random seed"),
 ) -> None:
     """Optimize hyperparameters for a recommendation model."""
-    typer.echo(f"Optimizing {model_type.value} model using {metric.value} with {trials} trials")
-
-    # Connect to database
+    # Set default output directory if not specified
+    if output is None:
+        output = Path(f"model_artifacts/{model_type.value}")
+    
+    # Create output directory
+    output.mkdir(parents=True, exist_ok=True)
+    
+    # Load data from DuckDB
+    logger.info(f"Loading data from {db}")
     conn = duckdb.connect(str(db))
-
-    # Load data
-    events_df = conn.execute("SELECT user_id, item_id, qty FROM events").fetchdf()
-
-    # Create user and item ID mappings
-    unique_users = events_df["user_id"].unique()
-    unique_items = events_df["item_id"].unique()
-
-    user_to_idx = {user: i for i, user in enumerate(unique_users)}
-    item_to_idx = {item: i for i, item in enumerate(unique_items)}
-
-    # Create train/test split
-    np.random.seed(seed)
-    train_mask = np.random.rand(len(events_df)) >= test_size
-
-    train_df = events_df[train_mask]
-    test_df = events_df[~train_mask]
-
-    # Create user-item matrices
-    train_matrix = _create_interaction_matrix(train_df, user_to_idx, item_to_idx)
-    test_matrix = _create_interaction_matrix(test_df, user_to_idx, item_to_idx)
-
-    # Define parameter space based on model type
-    # We need to use Any here to satisfy mypy
-    model_class: Any
-
+    
+    # Get user-item interaction matrix
+    user_item_df = conn.execute("""
+        SELECT user_id, item_id, CAST(SUM(qty) AS FLOAT) as interaction
+        FROM events
+        GROUP BY user_id, item_id
+    """).fetchdf()
+    
+    # Create mappings
+    logger.info("Creating user and item mappings")
+    unique_users = user_item_df["user_id"].unique()
+    unique_items = user_item_df["item_id"].unique()
+    
+    user_mapping = {user: idx for idx, user in enumerate(unique_users)}
+    item_mapping = {item: idx for idx, item in enumerate(unique_items)}
+    
+    # Create user-item matrix
+    rows = []
+    cols = []
+    data = []
+    
+    for _, row in user_item_df.iterrows():
+        user_idx = user_mapping[row["user_id"]]
+        item_idx = item_mapping[row["item_id"]]
+        interaction = row["interaction"]
+        
+        rows.append(user_idx)
+        cols.append(item_idx)
+        data.append(interaction)
+    
+    user_item_matrix = csr_matrix(
+        (data, (rows, cols)),
+        shape=(len(user_mapping), len(item_mapping))
+    )
+    
+    # Define parameter spaces for each model type
     if model_type == ModelType.ALS:
-        model_class = ALSModel
         param_space = {
-            "factors": {"type": "int", "low": 50, "high": 200, "step": 10},
-            "regularization": {"type": "float", "low": 0.001, "high": 0.1, "log": True},
-            "alpha": {"type": "float", "low": 0.1, "high": 10.0, "log": True},
-            "iterations": {"type": "int", "low": 5, "high": 30},
+            "factors": [32, 64, 128, 256],
+            "regularization": [0.001, 0.01, 0.1, 1.0],
+            "alpha": [0.1, 1.0, 10.0, 40.0],
+            "iterations": [10, 15, 20],
         }
     elif model_type == ModelType.BPR:
-        model_class = BPRModel
         param_space = {
-            "factors": {"type": "int", "low": 50, "high": 200, "step": 10},
-            "learning_rate": {"type": "float", "low": 0.001, "high": 0.1, "log": True},
-            "regularization": {"type": "float", "low": 0.001, "high": 0.1, "log": True},
-            "iterations": {"type": "int", "low": 50, "high": 200, "step": 10},
-        }
-    elif model_type == ModelType.LIGHTFM:
-        model_class = LightFMModel
-        param_space = {
-            "no_components": {"type": "int", "low": 50, "high": 200, "step": 10},
-            "learning_rate": {"type": "float", "low": 0.001, "high": 0.1, "log": True},
-            "item_alpha": {"type": "float", "low": 0.0, "high": 0.1},
-            "user_alpha": {"type": "float", "low": 0.0, "high": 0.1},
-            "loss": {"type": "categorical", "choices": ["warp", "bpr", "logistic"]},
-            "epochs": {"type": "int", "low": 20, "high": 100, "step": 10},
+            "factors": [32, 64, 100, 128, 200],
+            "learning_rate": [0.01, 0.05, 0.1],
+            "regularization": [0.001, 0.01, 0.1],
+            "iterations": [50, 100, 200],
         }
     elif model_type == ModelType.ITEM2VEC:
-        # Create session data for item2vec
-        sessions = []
-        for user in unique_users:
-            user_items = events_df[events_df["user_id"] == user]["item_id"].tolist()
-            if len(user_items) > 1:
-                sessions.append(user_items)
-
-        # Can't use the standard optimization for Item2Vec due to different input format
-        typer.echo("Item2Vec optimization is not implemented. Using default parameters.")
-        params = {"vector_size": 100, "window": 5, "min_count": 1, "sg": 1, "epochs": 5}
-        model = cast(BaseRecommender, Item2VecModel(**params))
-        # Item2Vec needs special handling for fit
-        if isinstance(model, Item2VecModel):
-            model.fit(train_matrix, user_sessions=sessions)
-
-        # Save model
-        output_dir = output / model_type.value
-        os.makedirs(output_dir, exist_ok=True)
-
-        # Save mappings
-        with open(output_dir / "user_mapping.json", "w") as f:
-            json.dump(user_to_idx, f)
-
-        with open(output_dir / "item_mapping.json", "w") as f:
-            json.dump(item_to_idx, f)
-
-        # Create Faiss index - use direct access to Item2Vec specific method
-        # Use type cast to satisfy the type checker
-        item_vectors = cast(Item2VecModel, model).get_item_vectors_matrix(list(item_to_idx.keys()))
-        index_builder = FaissIndexBuilder(
-            vectors=item_vectors,
-            ids=list(item_to_idx.keys()),
-            index_type="IVF_Flat",
-        )
-        index_builder.save(str(output_dir / "faiss_index"))
-
-        typer.echo(f"Item2Vec model trained and saved to {output_dir}")
-        return
-    elif model_type == ModelType.GRU4REC:
-        # Create session data for GRU4Rec
-        sessions = []
-        for user in unique_users:
-            user_items = events_df[events_df["user_id"] == user]["item_id"].tolist()
-            if len(user_items) > 1:
-                # Convert item IDs to indices
-                user_items_idx = [item_to_idx[item] for item in user_items]
-                sessions.append(user_items_idx)
-
-        # Can't use the standard optimization for GRU4Rec due to different input format
-        typer.echo("GRU4Rec optimization is not implemented. Using default parameters.")
-        # Make sure all numeric parameters are the right type for mypy
-        gru_params: Dict[str, Any] = {
-            "hidden_size": 100,
-            "n_layers": 1,
-            "dropout": 0.1,
-            "batch_size": 32,
-            "learning_rate": 0.001,
-            "n_epochs": 10,
-            "n_items": len(unique_items),
-            "use_cuda": False,
+        param_space = {
+            "vector_size": [32, 64, 100, 128, 200],
+            "window": [3, 5, 10],
+            "min_count": [1, 3, 5],
+            "sg": [0, 1],
+            "epochs": [3, 5, 10],
         }
-        model = cast(BaseRecommender, GRU4Rec(**gru_params))
-        # GRU4Rec needs special handling for fit
-        if isinstance(model, GRU4Rec):
-            model.fit(train_matrix, sessions=sessions)
-
-        # Save model
-        output_dir = output / model_type.value
-        os.makedirs(output_dir, exist_ok=True)
-
-        # Save mappings
-        with open(output_dir / "user_mapping.json", "w") as f:
-            json.dump(user_to_idx, f)
-
-        with open(output_dir / "item_mapping.json", "w") as f:
-            json.dump(item_to_idx, f)
-
-        # Save model
-        model.save_model(str(output_dir / "model.pt"))
-
-        typer.echo(f"GRU4Rec model trained and saved to {output_dir}")
-        return
-
-    # Create optimizer
+    elif model_type == ModelType.LIGHTFM:
+        param_space = {
+            "no_components": [32, 64, 128],
+            "learning_rate": [0.01, 0.05, 0.1],
+            "loss": ["warp", "bpr", "logistic"],
+            "epochs": [10, 30, 50],
+        }
+    elif model_type == ModelType.GRU4REC:
+        param_space = {
+            "hidden_size": [50, 100, 200],
+            "n_layers": [1, 2],
+            "dropout": [0.0, 0.1, 0.2, 0.3],
+            "batch_size": [32, 64, 128],
+            "learning_rate": [0.0001, 0.001, 0.01],
+            "n_epochs": [5, 10, 15],
+        }
+    elif model_type == ModelType.EASE:
+        param_space = {
+            "lambda_": [0.1, 0.5, 1.0, 5.0, 10.0],
+        }
+    elif model_type == ModelType.TEXT_EMBEDDING:
+        param_space = {
+            "model_name": ["all-MiniLM-L6-v2", "all-mpnet-base-v2", "paraphrase-multilingual-MiniLM-L12-v2"],
+            "batch_size": [32, 64, 128],
+            "field_weights": [
+                # Title focused
+                {"title": 3.0, "category": 1.0, "brand": 1.0, "description": 2.0},
+                # Description focused
+                {"title": 2.0, "category": 1.0, "brand": 1.0, "description": 3.0},
+                # Balanced
+                {"title": 2.0, "category": 1.5, "brand": 1.5, "description": 2.0},
+            ]
+        }
+    elif model_type == ModelType.HYBRID:
+        typer.echo("Optimization not supported for hybrid models")
+        raise typer.Exit(code=1)
+    else:
+        typer.echo(f"Unknown model type: {model_type}")
+        raise typer.Exit(code=1)
+    
+    # Initialize optimizer
     optimizer = OptunaOptimizer(
-        model_class=model_class,
-        metric=metric.value,
-        direction="maximize",
-        n_trials=trials,
-        study_name=f"{model_type.value}_{metric.value}",
-        seed=seed,
-    )
-
-    # Run optimization
-    best_params = optimizer.optimize(
-        train_data=train_matrix,
-        valid_data=test_matrix,
+        model_type=model_type.value,
         param_space=param_space,
-        user_mapping=user_to_idx,
-        item_mapping=item_to_idx,
+        metric=metric.value,
+        n_trials=trials,
+        test_size=test_size,
+        random_state=seed,
     )
-
-    # Train best model
-    output_dir = output / model_type.value
-    os.makedirs(output_dir, exist_ok=True)
-
-    best_model = optimizer.get_best_model(train_matrix)
-
-    # Save mappings
-    with open(output_dir / "user_mapping.json", "w") as f:
-        json.dump(user_to_idx, f)
-
-    with open(output_dir / "item_mapping.json", "w") as f:
-        json.dump(item_to_idx, f)
-
+    
+    # Run optimization
+    logger.info(f"Running optimization with {trials} trials")
+    best_params = optimizer.optimize(user_item_matrix)
+    
     # Save best parameters
-    with open(output_dir / "best_params.json", "w") as f:
-        json.dump(best_params, f)
-
-    # Create Faiss index
-    item_vectors = best_model.get_item_factors()
-    index_builder = FaissIndexBuilder(
-        vectors=item_vectors,
-        ids=list(item_to_idx.keys()),
-        index_type="IVF_Flat",
+    params_file = output / "best_params.json"
+    with open(params_file, "w") as f:
+        json.dump(best_params, f, indent=2)
+    
+    logger.info(f"Best parameters saved to {params_file}")
+    
+    # Train model with best parameters
+    logger.info("Training model with best parameters")
+    
+    # Use the train command to train with best parameters
+    # We use a temporary file to pass the parameters
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as temp:
+        json.dump(best_params, temp)
+        temp_path = temp.name
+    
+    # Train model with best parameters
+    train(
+        model_type=model_type,
+        db=db,
+        output=output,
+        test_size=test_size,
+        seed=seed,
+        params_file=Path(temp_path),
     )
-    index_builder.save(str(output_dir / "faiss_index"))
-
-    typer.echo(f"Best parameters: {best_params}")
-    typer.echo(f"Best score ({metric.value}): {optimizer.best_value}")
-    typer.echo(f"Model trained and saved to {output_dir}")
+    
+    # Clean up temporary file
+    os.unlink(temp_path)
+    
+    logger.info("Optimization complete")
 
 
 @app.command()
 def serve(
     model_dir: Path = typer.Option("model_artifacts/als", help="Model directory"),
-    host: str = typer.Option("0.0.0.0", help="Host to bind server"),
-    port: int = typer.Option(8000, help="Port to bind server"),
+    host: str = typer.Option("0.0.0.0", help="Host to listen on"),
+    port: int = typer.Option(8000, help="Port to listen on"),
+    workers: int = typer.Option(4, help="Number of worker processes"),
+    log_level: str = typer.Option("info", help="Log level (debug, info, warning, error)"),
 ) -> None:
-    """Start the FastAPI server."""
+    """Start the recommendation API server."""
     import uvicorn
-
     from recsys_lite.api.main import create_app
-
-    app = create_app(model_dir=model_dir)
-    typer.echo(f"Starting server with model from {model_dir}")
-    uvicorn.run(app, host=host, port=port)
+    
+    # Check if model directory exists
+    if not model_dir.exists():
+        typer.echo(f"Model directory {model_dir} does not exist")
+        raise typer.Exit(code=1)
+    
+    # Create app with model path
+    app = create_app(model_dir=str(model_dir))
+    
+    # Start server
+    typer.echo(f"Starting API server at http://{host}:{port}")
+    uvicorn.run(
+        app,
+        host=host,
+        port=port,
+        workers=workers,
+        log_level=log_level,
+    )
 
 
 @app.command()
 def worker(
     model_dir: Path = typer.Option("model_artifacts/als", help="Model directory"),
-    db: Path = typer.Option("recsys.db", help="Path to DuckDB database"),
+    db: Path = typer.Option("recsys.db", help="DuckDB database path"),
     interval: int = typer.Option(60, help="Update interval in seconds"),
+    incremental_dir: Optional[Path] = typer.Option(None, help="Directory to watch for incremental data"),
 ) -> None:
-    """Start the update worker."""
+    """Start the update worker for incremental model updates."""
     from recsys_lite.update.worker import UpdateWorker
-
-    typer.echo(f"Starting update worker with model from {model_dir}")
-
-    # Load model ID mappings
-    with open(model_dir / "user_mapping.json", "r") as f:
-        json.load(f)
-
-    with open(model_dir / "item_mapping.json", "r") as f:
-        json.load(f)
-
-    # Determine model type from directory name
-    model_type = os.path.basename(model_dir)
-
-    # Load model
-    model: BaseRecommender
-    if model_type == "als":
-        from recsys_lite.models import ALSModel
-
-        model = cast(BaseRecommender, ALSModel())
-        # TODO: Load model state
-    elif model_type == "bpr":
-        from recsys_lite.models import BPRModel
-
-        model = cast(BaseRecommender, BPRModel())
-        # TODO: Load model state
-    else:
-        typer.echo(f"Unsupported model type for incremental updates: {model_type}")
-        return
-
-    # Load Faiss index
-    index_builder = FaissIndexBuilder.load(str(model_dir / "faiss_index"))
-
-    # Create update worker
-    # Convert index_to_id to the expected type Dict[int, str]
-    item_id_map = {int(k): str(v) for k, v in index_builder.index_to_id.items()}
-
+    
+    # Check if model directory exists
+    if not model_dir.exists():
+        typer.echo(f"Model directory {model_dir} does not exist")
+        raise typer.Exit(code=1)
+    
+    # Check if database exists
+    if not db.exists():
+        typer.echo(f"Database {db} does not exist")
+        raise typer.Exit(code=1)
+    
+    # Create worker
     worker = UpdateWorker(
-        db_path=db,
-        model=model,
-        faiss_index=index_builder.index,
-        item_id_map=item_id_map,
+        model_dir=str(model_dir),
+        db_path=str(db),
         interval=interval,
+        incremental_dir=str(incremental_dir) if incremental_dir else None,
     )
-
-    # Run worker
+    
+    # Start worker
+    typer.echo(f"Starting update worker with {interval}s interval")
     worker.run()
-
-
-@app.command()
-def gdpr(
-    action: str = typer.Argument(..., help="GDPR action (delete-user, export-user)"),
-    user_id: str = typer.Argument(..., help="User ID"),
-    db: Path = typer.Option("recsys.db", help="Path to DuckDB database"),
-    output: Optional[Path] = typer.Option(None, help="Output path for export"),
-) -> None:
-    """GDPR compliance operations."""
-    if action == "delete-user":
-        typer.echo(f"Deleting data for user {user_id}")
-        conn = duckdb.connect(str(db))
-        conn.execute(f"DELETE FROM events WHERE user_id = '{user_id}'")
-        typer.echo("Deleted user data. You should retrain models.")
-    elif action == "export-user":
-        typer.echo(f"Exporting data for user {user_id}")
-        conn = duckdb.connect(str(db))
-
-        # Get user events
-        events_df = conn.execute(f"SELECT * FROM events WHERE user_id = '{user_id}'").fetchdf()
-
-        # Get item details for items the user interacted with
-        item_ids = events_df["item_id"].tolist()
-        if item_ids:
-            quoted_items = [f"'{item}'" for item in item_ids]
-            items_list = ", ".join(quoted_items)
-            items_sql = f"SELECT * FROM items WHERE item_id IN ({items_list})"
-            items_df = conn.execute(items_sql).fetchdf()
-        else:
-            items_df = None
-
-        # Create export data
-        export_data = {
-            "user_id": user_id,
-            "events": events_df.to_dict(orient="records") if not events_df.empty else [],
-            "items": items_df.to_dict(orient="records")
-            if items_df is not None and not items_df.empty
-            else [],
-        }
-
-        # Output to file or stdout
-        if output:
-            os.makedirs(os.path.dirname(output), exist_ok=True)
-            with open(output, "w") as f:
-                json.dump(export_data, f, indent=2)
-            typer.echo(f"User data exported to {output}")
-        else:
-            typer.echo(json.dumps(export_data, indent=2))
-    else:
-        typer.echo(f"Unknown GDPR action: {action}")
-
-
-def _create_interaction_matrix(
-    df: Any,
-    user_mapping: Dict[str, int],
-    item_mapping: Dict[str, int],
-) -> csr_matrix:
-    """Create user-item interaction matrix.
-
-    Args:
-        df: DataFrame with user-item interactions
-        user_mapping: Mapping from user IDs to indices
-        item_mapping: Mapping from item IDs to indices
-
-    Returns:
-        Sparse user-item interaction matrix
-    """
-    # Get matrix dimensions
-    n_users = len(user_mapping)
-    n_items = len(item_mapping)
-
-    # Create sparse matrix
-    row_indices = [user_mapping[user] for user in df["user_id"]]
-    col_indices = [item_mapping[item] for item in df["item_id"]]
-    data = df["qty"].astype(float).values  # Use quantities as interaction values
-
-    matrix = csr_matrix((data, (row_indices, col_indices)), shape=(n_users, n_items))
-
-    return matrix
-
-
-# ---------------------------------------------------------------------------
-# Utility exposed for tests.
-# ---------------------------------------------------------------------------
-
-
-def get_interactions_matrix(
-    db_path: Path
-) -> tuple[csr_matrix, Dict[str, int], Dict[str, int]]:  # pragma: no cover
-    """Fetch events from *db_path* and build a CSR interaction matrix.
-
-    The helper exists primarily for the test‑suite (``tests/test_cli.py``)
-    where it is patched / mocked – hence the loose error‑handling and the
-    conditional imports.  In production code-paths the logic is in‑lined in
-    the *train* / *optimize* commands to avoid an extra round‑trip to DuckDB.
-    """
-
-    # Connect to DuckDB
-    conn = duckdb.connect(str(db_path))
-
-    # If *conn* is not a real connection (can happen when fully mocked in the
-    # unit‑tests) short‑circuit and return empty artefacts.
-
-    if not hasattr(conn, "execute"):
-        from scipy.sparse import csr_matrix as _csr
-        return _csr((0, 0)), {}, {}
-
-    # Get distinct users and items to build stable index mappings
-    users_df = conn.execute("SELECT DISTINCT user_id FROM events").fetchdf()
-    items_df = conn.execute("SELECT DISTINCT item_id FROM events").fetchdf()
-
-    # Robustly extract the column values – they could be a DataFrame or a
-    # simple dict/record batch when the function is mocked.
-    users = list(users_df["user_id"]) if "user_id" in users_df else list(users_df)
-    items = list(items_df["item_id"]) if "item_id" in items_df else list(items_df)
-
-    user_mapping = {user: idx for idx, user in enumerate(users)}
-    item_mapping = {item: idx for idx, item in enumerate(items)}
-
-    # Fetch the full interaction table (user_id, item_id, qty)
-    events_df = conn.execute("SELECT user_id, item_id, qty FROM events").fetchdf()
-
-    # Close connection early – we no longer need the DB
-    conn.close()
-
-    # If the events_df is empty (or mocked), guard against missing columns
-    # In several unit‑tests *duckdb* is fully mocked which means the objects
-    # coming back from ``fetchdf()`` can be plain dictionaries or even arbitrary
-    # mocks.  In that scenario we construct an *empty* interaction matrix but
-    # still return the populated mappings so that the callers can continue.
-
-    if not hasattr(events_df, "__getitem__") or "user_id" not in events_df:
-        # Return empty sparse matrix and the computed (possibly empty) mappings
-        from scipy.sparse import csr_matrix as _csr  # local import to keep top level clean
-
-        return _csr((0, 0)), user_mapping, item_mapping
-
-    try:
-        matrix = _create_interaction_matrix(events_df, user_mapping, item_mapping)
-    except Exception:
-        from scipy.sparse import csr_matrix as _csr
-        matrix = _csr((len(user_mapping), len(item_mapping)))
-
-    return matrix, user_mapping, item_mapping
-
-
-# ---------------------------------------------------------------------------
-# Very small public helper so that it can be monkey‑patched in the test‑suite.
-# ---------------------------------------------------------------------------
-
-
-def optimize_hyperparameters(
-    *,
-    model_type: ModelType,
-    db_path: Path,
-    output_dir: Path,
-    metric: MetricType = MetricType.NDCG_20,
-    n_trials: int = 20,
-    test_size: float = 0.2,
-    seed: int = 42,
-):  # pragma: no cover – heavily mocked in the tests
-    """Thin wrapper around :class:`OptunaOptimizer` used solely by the tests.
-
-    The implementation purposefully mirrors (in a *much* simplified way) the
-    logic that lives in the Typer *optimize* command so that the test‑suite can
-    patch the heavy dependencies and assert the interaction.
-    """
-
-    # Retrieve interactions matrix – this call is monkey‑patched in tests.
-    interactions, user_mapping, item_mapping = get_interactions_matrix(db_path)
-
-    # Instantiate the (possibly patched) optimizer
-    optimizer = OptunaOptimizer(  # type: ignore[call-arg]  – patched during tests
-        model_class=str(model_type),  # placeholder, not used when patched
-        metric=metric.value,
-        n_trials=n_trials,
-        seed=seed,
-    )
-
-    # Parameter space – the concrete content is irrelevant for the tests
-    param_space = {}
-
-    best_params = optimizer.optimize(  # type: ignore[attr-defined]
-        train_data=interactions,
-        valid_data=interactions,
-        param_space=param_space,
-        user_mapping=user_mapping,
-        item_mapping=item_mapping,
-    )
-
-    optimizer.get_best_model(interactions)  # type: ignore[attr-defined]
-
-    return best_params
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
 
 A lightweight recommendation system designed for small e-commerce shops running on CPU-only environments. RecSys-Lite provides multiple recommendation algorithms, automatic hyperparameter optimization, fast recommendation serving via Faiss, and a React widget for displaying recommendations.
 
-![RecSys-Lite](https://img.shields.io/badge/RecSys--Lite-v0.1.1-blue)
+![RecSys-Lite](https://img.shields.io/badge/RecSys--Lite-v0.2.0-blue)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.100.0-green)
 ![React](https://img.shields.io/badge/React-18-blue)
@@ -16,6 +16,8 @@ A lightweight recommendation system designed for small e-commerce shops running 
   - Hybrid matrix factorization via `LightFM`
   - GRU4Rec session-based model via PyTorch
   - EASE‑R linear item‑item model (state‑of‑the‑art accuracy, CPU friendly)
+  - Text embedding model via `sentence-transformers` (all-MiniLM-L6-v2)
+  - Hybrid model for combining collaborative filtering with content-based approaches
 
 - **Hyperparameter Optimization**:
   - Automatic tuning via Optuna
@@ -65,8 +67,14 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 # Install Python dependencies using Poetry (recommended)
 poetry install
 
+# Or install with LLM support
+poetry install -E llm
+
 # Or install using pip
 pip install -e .
+
+# Or with LLM support
+pip install -e ".[llm]"
 
 # Or use Docker
 docker compose -f docker/docker-compose.yml up -d
@@ -102,6 +110,12 @@ recsys-lite train item2vec --db recsys.db --output model_artifacts/item2vec
 
 # Train EASE-R model
 recsys-lite train ease --db recsys.db --output model_artifacts/ease
+
+# Train text embedding model (requires sentence-transformers)
+recsys-lite train text_embedding --db recsys.db --output model_artifacts/text_embedding
+
+# Create a hybrid model (combining ALS and text embedding)
+recsys-lite train_hybrid model_artifacts/als model_artifacts/text_embedding --output model_artifacts/hybrid
 
 # Run hyperparameter optimization
 recsys-lite optimize als --db recsys.db --trials 20 --metric ndcg@20
@@ -163,6 +177,8 @@ function App() {
 | `train lightfm` | Train LightFM model | `--db <path>`, `--output <dir>`, `--test-size <float>` |
 | `train gru4rec` | Train GRU4Rec model | `--db <path>`, `--output <dir>`, `--test-size <float>` |
 | `train ease` | Train EASE‑R linear item‑based model | `--db <path>`, `--output <dir>` |
+| `train text_embedding` | Train text embedding model | `--db <path>`, `--output <dir>`, `--model-name <name>`, `--fields <fields>` |
+| `train_hybrid` | Create hybrid model | `models_dir [models_dir...]`, `--output <dir>`, `--weights <w1,w2...>`, `--dynamic`, `--cold-start-threshold <n>` |
 
 ### Hyperparameter Optimization
 
@@ -425,8 +441,10 @@ Sample data structure:
 1. Create a new model file in `src/recsys_lite/models/`
 2. Implement the model class extending `BaseRecommender`
 3. Update `src/recsys_lite/models/__init__.py` to export the new model
-4. Add CLI command in `src/recsys_lite/cli.py`
-5. Add tests in `tests/test_models.py`
+4. Add a mock implementation for CI environment if needed
+5. Add the model type to the `ModelType` enum in `src/recsys_lite/cli.py`
+6. Add CLI command in `src/recsys_lite/cli.py`
+7. Add tests in `tests/test_models.py`
 
 Example model implementation:
 ```python

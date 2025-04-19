@@ -18,6 +18,9 @@ if os.environ.get("CI") == "true":
     # In CI environment, use mock implementations
     from recsys_lite.models.gru4rec_mock import GRU4Rec
     from recsys_lite.models.lightfm_mock import LightFMModel
+    # Mock implementations for text embedding and hybrid
+    from recsys_lite.models.text_embedding_mock import TextEmbeddingModel
+    from recsys_lite.models.hybrid_mock import HybridModel
 else:
     # In normal environments, use real implementations
     try:
@@ -31,6 +34,18 @@ else:
     except ImportError:
         # Fallback to mock if torch isn't available
         from recsys_lite.models.gru4rec_mock import GRU4Rec
+        
+    try:
+        from recsys_lite.models.text_embedding import TextEmbeddingModel
+    except ImportError:
+        # Fallback if sentence-transformers isn't available
+        from recsys_lite.models.text_embedding_mock import TextEmbeddingModel
+    
+    try:
+        from recsys_lite.models.hybrid import HybridModel
+    except ImportError:
+        # Fallback for hybrid model
+        from recsys_lite.models.hybrid_mock import HybridModel
 
 # Register models with the registry
 ModelRegistry.register("als", ALSModel)
@@ -39,6 +54,8 @@ ModelRegistry.register("item2vec", Item2VecModel)
 ModelRegistry.register("ease", EASEModel)
 ModelRegistry.register("lightfm", LightFMModel)
 ModelRegistry.register("gru4rec", GRU4Rec)
+ModelRegistry.register("text_embedding", TextEmbeddingModel)
+ModelRegistry.register("hybrid", HybridModel)
 
 __all__ = [
     "BaseRecommender",
@@ -51,4 +68,6 @@ __all__ = [
     "EASEModel",
     "LightFMModel",
     "GRU4Rec",
+    "TextEmbeddingModel",
+    "HybridModel",
 ]

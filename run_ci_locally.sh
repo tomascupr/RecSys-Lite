@@ -16,9 +16,10 @@ poetry run ruff src
 
 # Step 3: Type checking - matching GitHub Actions workflow
 echo "🔎 Running mypy type checking..."
-# Run with --strict flag as in GitHub Actions but don't fail on errors
-poetry run mypy --strict src || true
-echo "✅ Type check completed (continuing despite errors)."
+# Run with --strict flag as in GitHub Actions and fail if there are errors
+poetry run mypy --strict src
+# Only reaches here if mypy succeeds
+echo "✅ Type check completed successfully."
 
 # Step 4: Run tests
 echo "🧪 Running tests..."

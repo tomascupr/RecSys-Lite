@@ -76,7 +76,13 @@ module = [
     "gensim.*",
     "torch.*",
     "lightfm.*",
-    "duckdb"
+    "duckdb",
+    "pandas",
+    "pyarrow",
+    "pyarrow.parquet",
+    "pika",
+    "kafka",
+    "kafka.consumer"
 ]
 ignore_missing_imports = true
 
@@ -85,7 +91,8 @@ ignore_missing_imports = true
 module = [
     "recsys_lite.models.*",
     "recsys_lite.api.main",
-    "recsys_lite.cli"
+    "recsys_lite.cli",
+    "recsys_lite.__init__"  # Very complex setup file with many stub implementations
 ]
 ignore_errors = true
 

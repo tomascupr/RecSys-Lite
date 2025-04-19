@@ -255,9 +255,16 @@ class RabbitMQConsumer(MessageQueueConsumer):
         if self.channel is None:
             self.connect()
         
+        # Ensure channel is initialized
+        assert self.channel is not None, "Channel must be initialized before consuming"
+        
         messages: List[Dict[str, Any]] = []
         
         for _ in range(batch_size):
+            method_frame: Any
+            header_frame: Any
+            body: bytes
+            
             method_frame, header_frame, body = self.channel.basic_get(
                 queue=self.queue, auto_ack=False
             )
@@ -538,4 +545,4 @@ def queue_ingest(
     finally:
         # Ensure consumer is closed
         if 'consumer' in locals():
-            cast(MessageQueueConsumer, consumer).close()
+            consumer.close()  # No need for cast, consumer is already of MessageQueueConsumer type

@@ -19,15 +19,15 @@ import json
 import random
 import time
 from datetime import datetime
-from typing import Dict, Any
+from typing import Any, Dict
 
 try:
     from kafka import KafkaProducer
-except ImportError:
+except ImportError as err:
     raise ImportError(
         "Kafka producer requires kafka-python package. "
         "Install it with: pip install kafka-python"
-    )
+    ) from err
 
 
 def send_event_messages(

@@ -20,15 +20,15 @@ import json
 import random
 import time
 from datetime import datetime
-from typing import Dict, Any
+from typing import Any, Dict
 
 try:
     import pika
-except ImportError:
+except ImportError as err:
     raise ImportError(
         "RabbitMQ producer requires pika package. "
         "Install it with: pip install pika"
-    )
+    ) from err
 
 
 def send_event_messages(

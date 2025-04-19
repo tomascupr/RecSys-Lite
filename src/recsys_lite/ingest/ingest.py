@@ -2,15 +2,14 @@
 
 import json
 import logging
+import time
 from abc import ABC, abstractmethod
 from pathlib import Path
-import time
-from typing import Any, Dict, List, Optional, Union, cast
+from typing import Any, Dict, List, Optional, cast
 
 import duckdb
 import pandas as pd
 import pyarrow as pa
-import pyarrow.parquet as pq
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -191,12 +190,14 @@ class RabbitMQConsumer(MessageQueueConsumer):
             prefetch_count: Number of messages to prefetch
         """
         try:
-            import pika
-        except ImportError:
+            import importlib.util
+            if importlib.util.find_spec("pika") is None:
+                raise ImportError("pika package not found")
+        except ImportError as err:
             raise ImportError(
                 "RabbitMQ support requires pika package. "
                 "Install it with: pip install recsys-lite[mq]"
-            )
+            ) from err
             
         self.host = host
         self.port = port
@@ -232,11 +233,11 @@ class RabbitMQConsumer(MessageQueueConsumer):
             self.channel.basic_qos(prefetch_count=self.prefetch_count)
             
             logger.info(f"Connected to RabbitMQ at {self.host}:{self.port}, queue: {self.queue}")
-        except ImportError:
+        except ImportError as err:
             raise ImportError(
                 "RabbitMQ support requires pika package. "
                 "Install it with: pip install recsys-lite[mq]"
-            )
+            ) from err
         except Exception as e:
             logger.error(f"Failed to connect to RabbitMQ: {e}")
             raise
@@ -250,7 +251,6 @@ class RabbitMQConsumer(MessageQueueConsumer):
         Returns:
             List of consumed messages as dictionaries
         """
-        import pika
         
         if self.channel is None:
             self.connect()
@@ -308,12 +308,14 @@ class KafkaConsumer(MessageQueueConsumer):
             auto_offset_reset: Offset reset policy ('earliest' or 'latest')
         """
         try:
-            import kafka
-        except ImportError:
+            import importlib.util
+            if importlib.util.find_spec("kafka") is None:
+                raise ImportError("kafka-python package not found")
+        except ImportError as err:
             raise ImportError(
                 "Kafka support requires kafka-python package. "
                 "Install it with: pip install recsys-lite[mq]"
-            )
+            ) from err
             
         self.bootstrap_servers = bootstrap_servers
         self.topic = topic
@@ -340,11 +342,11 @@ class KafkaConsumer(MessageQueueConsumer):
                 f"Connected to Kafka at {self.bootstrap_servers}, "
                 f"topic: {self.topic}, group: {self.group_id}"
             )
-        except ImportError:
+        except ImportError as err:
             raise ImportError(
                 "Kafka support requires kafka-python package. "
                 "Install it with: pip install recsys-lite[mq]"
-            )
+            ) from err
         except Exception as e:
             logger.error(f"Failed to connect to Kafka: {e}")
             raise

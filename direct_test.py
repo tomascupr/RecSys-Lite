@@ -7,7 +7,6 @@ import json
 from pathlib import Path
 import sys
 
-import pandas as pd
 import scipy.sparse as sp
 
 # Add project modules to path
@@ -15,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from recsys_lite.models.als import ALSModel
+
 
 def main():
     """Test recommendation functionality directly."""
@@ -49,7 +49,6 @@ def main():
         return
     
     # Create a dummy user-item matrix with a single row for the user we're testing
-    n_users = len(user_to_idx)
     n_items = len(idx_to_item)
     
     data = []
@@ -74,7 +73,7 @@ def main():
     # Format results
     results = [
         {"item_id": item_id, "score": float(score)}
-        for item_id, score in zip(item_ids, scores)
+        for item_id, score in zip(item_ids, scores, strict=False)
     ]
     
     print("Recommendations:")

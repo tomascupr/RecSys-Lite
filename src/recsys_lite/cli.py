@@ -13,11 +13,10 @@ import typer
 from scipy.sparse import csr_matrix
 
 from recsys_lite.indexing import FaissIndexBuilder
-from recsys_lite.ingest import ingest_data
+
 # We import lazily for stream to avoid optional dependency issues.
-from recsys_lite.ingest import stream_events
 # Import message queue ingest
-from recsys_lite.ingest import queue_ingest
+from recsys_lite.ingest import ingest_data, queue_ingest, stream_events
 from recsys_lite.models import (
     ALSModel,
     BaseRecommender,
@@ -95,7 +94,7 @@ def stream_ingest(
         stream_events(events_dir, db, poll_interval=poll_interval)
     except FileNotFoundError as exc:
         typer.echo(f"Error: {exc}", err=True)
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from exc
 
 
 class QueueType(str, Enum):
@@ -145,14 +144,17 @@ def queue_ingest_command(
     
     if queue_type == QueueType.RABBITMQ:
         try:
-            import pika  # Check if pika is installed
-        except ImportError:
+            # Check for pika availability without importing
+            import importlib.util
+            if importlib.util.find_spec("pika") is None:
+                raise ImportError("pika package not found")
+        except ImportError as err:
             typer.echo(
                 "Error: RabbitMQ support requires the pika package.\n"
                 "Install it with: pip install recsys-lite[mq]", 
                 err=True
             )
-            raise typer.Exit(code=1)
+            raise typer.Exit(code=1) from err
             
         queue_config = {
             "host": rabbitmq_host,
@@ -164,14 +166,17 @@ def queue_ingest_command(
         }
     elif queue_type == QueueType.KAFKA:
         try:
-            import kafka  # Check if kafka-python is installed
-        except ImportError:
+            # Check for kafka availability without importing
+            import importlib.util
+            if importlib.util.find_spec("kafka") is None:
+                raise ImportError("kafka-python package not found")
+        except ImportError as err:
             typer.echo(
                 "Error: Kafka support requires the kafka-python package.\n"
                 "Install it with: pip install recsys-lite[mq]", 
                 err=True
             )
-            raise typer.Exit(code=1)
+            raise typer.Exit(code=1) from err
             
         queue_config = {
             "bootstrap_servers": kafka_servers,
@@ -194,7 +199,7 @@ def queue_ingest_command(
         )
     except Exception as exc:
         typer.echo(f"Error: {exc}", err=True)
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from exc
 
 
 @app.command()

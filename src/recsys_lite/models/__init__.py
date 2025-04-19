@@ -10,8 +10,8 @@ from recsys_lite.models.base import (
     ModelRegistry,
 )
 from recsys_lite.models.bpr import BPRModel
-from recsys_lite.models.item2vec import Item2VecModel
 from recsys_lite.models.ease import EASEModel
+from recsys_lite.models.item2vec import Item2VecModel
 
 # Use mock implementations in CI environment where building real dependencies fails
 if os.environ.get("CI") == "true":

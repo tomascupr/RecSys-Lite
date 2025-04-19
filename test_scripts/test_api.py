@@ -1,13 +1,13 @@
 """Test script for API functionality."""
 
 import json
+import shutil
 import sys
 from pathlib import Path
 
 # Data and test client imports
 import numpy as np
 import scipy.sparse as sp
-import shutil
 from fastapi.testclient import TestClient
 
 # Set the path to the source directory
@@ -36,6 +36,7 @@ except ImportError as e:
 # Create a temporary directory for testing
 from recsys_lite.api.dependencies import get_api_state
 from recsys_lite.api.loaders import setup_recommendation_service
+
 test_dir = Path("test_data")
 # Clear any previous model artifacts
 shutil.rmtree(test_dir / "model_artifacts", ignore_errors=True)

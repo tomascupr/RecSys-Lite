@@ -5,6 +5,7 @@ from pathlib import Path
 
 import numpy as np
 import scipy.sparse as sp
+
 from recsys_lite.update.worker import UpdateWorker
 
 # Add the project's src directory to the Python path

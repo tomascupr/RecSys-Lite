@@ -5,6 +5,7 @@ import os
 import numpy as np
 import pytest
 import scipy.sparse as sp
+
 from recsys_lite.models import ALSModel, BPRModel, Item2VecModel, LightFMModel
 
 # Skip tests that require heavy dependencies in CI environment

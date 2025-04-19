@@ -2,9 +2,8 @@
 
 import json
 import os
-import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict
 from unittest.mock import MagicMock, patch
 
 import numpy as np

@@ -3,7 +3,6 @@
 import random
 from typing import Dict, List
 
-import numpy as np
 import uvicorn
 from fastapi import FastAPI, Query
 from pydantic import BaseModel

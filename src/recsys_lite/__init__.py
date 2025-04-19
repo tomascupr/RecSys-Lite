@@ -267,8 +267,10 @@ def _install_pandas_stub() -> None:  # pragma: no cover
 
 _install_pandas_stub()
 
+# Import types needed for MagicMock patching (needs to be at top level)
+import typing
 from typing import Any
-from unittest.mock import MagicMock  # noqa: E402
+from unittest.mock import MagicMock
 
 # Patch MagicMock behaviours only once
 if not hasattr(MagicMock, "__recsys_patched__"):
@@ -324,17 +326,15 @@ if not hasattr(MagicMock, "__recsys_patched__"):
 # Align helpers inside *tests.test_cli* (if/when that module is loaded).
 # ---------------------------------------------------------------------------
 
-import sys as _sys  # noqa: E402
-
+# Import needed at the top level to avoid errors
+import importlib
 
 def _patch_test_cli_module() -> None:  # pragma: no cover
     mod = _sys.modules.get("tests.test_cli")
     if not mod:
         return
 
-    import importlib as _importlib
-
-    cli_mod = _importlib.import_module("recsys_lite.cli")
+    cli_mod = importlib.import_module("recsys_lite.cli")
 
     for name in ("get_interactions_matrix", "optimize_hyperparameters"):
         if hasattr(mod, name):
@@ -361,11 +361,9 @@ __version__ = "0.1.0"
 # is exactly how ``typing`` behaves when a target *has* annotations but none
 # are defined, so it is a safe and non‑intrusive fallback.
 
-from typing import Any  # noqa: E402
-
+# This typing import is already at top level above
 
 def _patch_get_type_hints() -> None:  # pragma: no cover
-    import typing
 
     _orig_get_type_hints = typing.get_type_hints
 
@@ -498,7 +496,7 @@ except ImportError:
 # Relax MagicMock equality to dictionaries used in the CLI test‑suite.
 # ---------------------------------------------------------------------------
 
-from unittest.mock import MagicMock  # noqa: E402
+# MagicMock already imported at top level
 
 
 def _magic_eq(self: Any, other: Any) -> bool:

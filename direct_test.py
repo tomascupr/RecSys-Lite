@@ -4,8 +4,8 @@ This script loads the model directly without using Docker containers.
 """
 
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import scipy.sparse as sp
 

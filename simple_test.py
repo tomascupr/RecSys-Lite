@@ -9,7 +9,6 @@ import pickle
 from pathlib import Path
 
 import numpy as np
-import scipy.sparse as sp
 
 # Directory to save model artifacts
 MODEL_DIR = Path("model_artifacts/als")

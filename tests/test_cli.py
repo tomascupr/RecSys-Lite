@@ -13,22 +13,20 @@ case the CLI contract breaks in the future.
 
 from __future__ import annotations
 
-import json
-from types import SimpleNamespace
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pandas as pd
 import pytest
 from typer.testing import CliRunner
 
+import recsys_lite.cli as cli_mod
+
 # ---------------------------------------------------------------------------
 #  Production objects we want to test.
 # ---------------------------------------------------------------------------
-
 from recsys_lite.cli import app as typer_app  # The real Typer instance
-import recsys_lite.cli as cli_mod
-
 
 # ---------------------------------------------------------------------------
 #  Helpers / stubs

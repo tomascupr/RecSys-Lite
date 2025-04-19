@@ -3,8 +3,9 @@
 Acceptance test script for the recommendation API.
 """
 
-import requests
 import pytest
+import requests
+
 
 def test_health():
     """Test the health endpoint."""

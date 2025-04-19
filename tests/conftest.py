@@ -3,7 +3,6 @@
 import os
 import sys
 from pathlib import Path
-import pytest
 
 # Add the src directory to the Python path automatically for all tests
 project_root = Path(__file__).parent.parent  # Get the project root directory

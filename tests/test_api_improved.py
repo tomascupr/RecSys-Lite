@@ -3,25 +3,12 @@
 This version focuses on testing the API with properly mocked components.
 """
 
-import json
-import os
-import sys
-import time
-from pathlib import Path
-from unittest.mock import MagicMock, patch
 
-import numpy as np
 import pytest
-import scipy.sparse as sp
 from fastapi.testclient import TestClient
 
 # Import our test helpers
-from tests.test_helpers import (
-    create_mock_faiss_index, 
-    create_mock_model, 
-    create_test_directory_structure,
-    is_ci_environment
-)
+from tests.test_helpers import is_ci_environment
 
 # Check if in CI environment first
 is_ci = is_ci_environment()
@@ -30,12 +17,8 @@ pytestmark = pytest.mark.skipif(
 )
 
 try:
-    from recsys_lite.api.main import (
-        Recommendation,
-        RecommendationResponse,
-        create_app,
-        app as default_app
-    )
+    from recsys_lite.api.main import Recommendation, RecommendationResponse, create_app
+    from recsys_lite.api.main import app as default_app
     HAS_DEPENDENCIES = True
 except ImportError:
     # For environments where dependencies might be missing

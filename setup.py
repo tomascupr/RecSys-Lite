@@ -3,7 +3,7 @@
 This is used for installing the package in development mode in Docker.
 """
 
-from setuptools import setup, find_namespace_packages
+from setuptools import find_namespace_packages, setup
 
 if __name__ == "__main__":
     setup(

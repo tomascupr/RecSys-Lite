@@ -16,6 +16,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 from fastapi.testclient import TestClient
+
 from recsys_lite.api.main import create_app
 from recsys_lite.indexing import FaissIndexBuilder
 

@@ -12,12 +12,10 @@ without touching the public API.
 
 from __future__ import annotations
 
-from typing import Any, Tuple, Union, List
-
-import scipy.sparse as sp
+from typing import Any, Tuple, Union
 
 import numpy as np
-
+import scipy.sparse as sp
 from numpy.typing import NDArray
 
 from .base import BaseRecommender, FactorizationModelMixin, ModelRegistry
@@ -58,7 +56,7 @@ class EASEModel(BaseRecommender, FactorizationModelMixin):
         # already interacted with (diagonal are ones so will be filtered).
         interacted_items = set(user_items.indices if hasattr(user_items, "indices") else [])
 
-        scores = [sum(col) for col in zip(*self.item_similarity)]
+        scores = [sum(col) for col in zip(*self.item_similarity, strict=False)]
         candidate_indices = [i for i in range(len(scores)) if i not in interacted_items]
 
         top_indices_list = candidate_indices[: n_items]

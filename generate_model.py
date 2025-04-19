@@ -6,7 +6,6 @@ import pickle
 import sys
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import scipy.sparse as sp
 
@@ -17,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 from recsys_lite.indexing.faiss_index import FaissIndexBuilder
 from recsys_lite.models.als import ALSModel
+
 
 def main():
     print("Generating model artifacts from sample data")

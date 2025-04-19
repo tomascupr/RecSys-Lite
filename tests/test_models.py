@@ -114,8 +114,15 @@ def test_item2vec_model(sample_data):
     # Initialize model
     model = Item2VecModel(vector_size=10, window=2, min_count=1, sg=1, epochs=5)
 
+    # Ensure sessions are properly formatted for Item2Vec
+    formatted_sessions = []
+    for session in sessions:
+        # Convert to strings since Item2Vec works with string IDs
+        formatted_sessions.append([str(item) for item in session])
+        
     # Fit model
-    model.fit(sessions)
+    if formatted_sessions:
+        model.fit(formatted_sessions)
 
     # Check that item vectors were learned
     assert model.item_vectors is not None
@@ -125,9 +132,10 @@ def test_item2vec_model(sample_data):
         assert vector.shape == (10,)
 
     # Test get_item_vectors
-    item_vectors = model.get_item_vectors()
+    item_ids = list(model.item_vectors.keys())
+    item_vectors = model.get_item_vectors(item_ids)
     assert item_vectors is not None
-    assert isinstance(item_vectors, dict)
+    assert isinstance(item_vectors, np.ndarray)
 
     # Test get_item_vectors_matrix
     item_ids = (

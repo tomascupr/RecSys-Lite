@@ -9,8 +9,10 @@ import os as _os
 _os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 _os.environ.setdefault("OMP_NUM_THREADS", "1")
 _os.environ.setdefault("MKL_NUM_THREADS", "1")
-# Mark as CI environment so heavy tests are skipped (pandas/duckdb etc.)
-_os.environ.setdefault("CI", "true")
+
+# Only use stubs in actual CI environment, not during local testing
+# Determine if we're in a real CI environment (GitHub Actions, etc.)
+is_ci = _os.environ.get("CI", "").lower() == "true" or _os.environ.get("GITHUB_ACTIONS", "").lower() == "true"
 
 # ---------------------------------------------------------------------------
 # Numpy polyfit guard – The linked OpenBLAS build sporadically segfaults when
@@ -34,6 +36,10 @@ import types as _types
 
 
 def _install_numpy_stub() -> None:  # pragma: no cover – executed at import time
+    # Only install stubs in CI environment
+    if not is_ci:
+        return
+
     if "numpy" in _sys.modules:
         # Real NumPy has already been imported elsewhere – nothing we can do.
         return
@@ -131,6 +137,10 @@ def _install_scipy_stub() -> None:  # pragma: no cover
     import sys as _sys
     import types as _types
 
+    # Only install stubs in CI environment
+    if not is_ci:
+        return
+
     if "scipy" in _sys.modules:
         return
 
@@ -174,6 +184,10 @@ _install_scipy_stub()
 def _install_faiss_stub() -> None:  # pragma: no cover
     import sys as _sys
     import types as _types
+
+    # Only install stubs in CI environment
+    if not is_ci:
+        return
 
     if "faiss" in _sys.modules:
         return
@@ -256,6 +270,10 @@ def _install_pandas_stub() -> None:  # pragma: no cover
     import sys as _sys
     import types as _types
     from pathlib import Path as _Path
+
+    # Only install stubs in CI environment
+    if not is_ci:
+        return
 
     if "pandas" in _sys.modules:
         return

@@ -1,17 +1,12 @@
 """Recommendation models for RecSys-Lite."""
 
-import os
-
 # We'll use this approach to simplify imports and avoid mypy warnings
 from typing import Any, Optional, Type
 
+# Import is_ci to determine if we're in a CI environment
+from recsys_lite import is_ci
 from recsys_lite.models.als import ALSModel
-from recsys_lite.models.base import (
-    BaseRecommender,
-    FactorizationModelMixin,
-    ModelPersistenceMixin,
-    ModelRegistry,
-)
+from recsys_lite.models.base import BaseRecommender, FactorizationModelMixin, ModelPersistenceMixin, ModelRegistry
 from recsys_lite.models.bpr import BPRModel
 from recsys_lite.models.ease import EASEModel
 
@@ -32,7 +27,11 @@ class _ModelImporter:
         self.registry[model_type] = model_class
 
     def get(self, model_type: str) -> Optional[Type[BaseRecommender]]:
-        return self.registry.get(model_type, None)
+        result = self.registry.get(model_type, None)
+        if result is None:
+            return None
+        # Cast the result to the expected type to satisfy mypy
+        return result  # type: ignore
 
 
 # Global importer
@@ -50,8 +49,8 @@ HybridModel = HybridModelMock
 LightFMModel = LightFMModelMock
 TextEmbeddingModel = TextEmbeddingModelMock
 
-# In normal environments, try real implementations
-if os.environ.get("CI") != "true":
+# Only use real implementations in non-CI environments
+if not is_ci:
     try:
         from recsys_lite.models.lightfm_model import LightFMModel as _LightFMModel
 

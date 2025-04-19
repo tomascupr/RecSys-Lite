@@ -126,9 +126,7 @@ class Item2VecModel(BaseRecommender):
         similar_items = []
         for item_id, vector in self.item_vectors.items():
             if item_id not in items:  # Skip items user already has
-                similarity = np.dot(avg_vector, vector) / (
-                    np.linalg.norm(avg_vector) * np.linalg.norm(vector)
-                )
+                similarity = np.dot(avg_vector, vector) / (np.linalg.norm(avg_vector) * np.linalg.norm(vector))
                 similar_items.append((item_id, similarity))
 
         # Sort by similarity
@@ -203,26 +201,22 @@ class Item2VecModel(BaseRecommender):
         """Get model state for serialization."""
         return {
             "item_vectors": self.item_vectors,
-            "size": self.size,
-            "window": self.window,
-            "min_count": self.min_count,
-            "negative": self.negative,
-            "ns_exponent": self.ns_exponent,
-            "sg": self.sg,
-            "epochs": self.epochs,
+            "vector_size": self.model.vector_size,
+            "window": self.model.window,
+            "min_count": self.model.min_count,
+            "sg": self.model.sg,
+            "epochs": self.model.epochs,
             "word2vec_model": self.model,
         }
 
     def _set_model_state(self, model_state: Dict[str, Any]) -> None:
         """Set model state from deserialized data."""
         self.item_vectors = model_state.get("item_vectors", {})
-        self.size = model_state.get("size", 100)
-        self.window = model_state.get("window", 5)
-        self.min_count = model_state.get("min_count", 1)
-        self.negative = model_state.get("negative", 5)
-        self.ns_exponent = model_state.get("ns_exponent", 0.75)
-        self.sg = model_state.get("sg", 1)
-        self.epochs = model_state.get("epochs", 5)
+        vector_size = model_state.get("vector_size", 100)
+        window = model_state.get("window", 5)
+        min_count = model_state.get("min_count", 1)
+        sg = model_state.get("sg", 1)
+        epochs = model_state.get("epochs", 5)
 
         # Restore Word2Vec model if available
         word2vec_model = model_state.get("word2vec_model")
@@ -231,13 +225,11 @@ class Item2VecModel(BaseRecommender):
         else:
             # Create a new model with saved parameters
             self.model = Word2Vec(
-                vector_size=self.size,
-                window=self.window,
-                min_count=self.min_count,
-                negative=self.negative,
-                ns_exponent=self.ns_exponent,
-                sg=self.sg,
-                epochs=self.epochs,
+                vector_size=vector_size,
+                window=window,
+                min_count=min_count,
+                sg=sg,
+                epochs=epochs,
                 workers=0,  # Use all available cores
             )
 
@@ -260,7 +252,7 @@ class Item2VecModel(BaseRecommender):
                 vectors.append(self.item_vectors[item_id])
             else:
                 # If item not found, add a zero vector
-                vectors.append(np.zeros(self.size, dtype=np.float32))
+                vectors.append(np.zeros(self.model.vector_size, dtype=np.float32))
 
         if not vectors:
             return np.array([], dtype=np.float32)

@@ -70,7 +70,10 @@ disallow_subclassing_any = false  # Allow subclassing Any for torch classes
 warn_redundant_casts = true
 warn_unused_ignores = false  # Disable to allow type ignores in stub code
 warn_no_return = true
-warn_unreachable = false  # Disable unreachable statement warnings
+warn_unreachable = false  # Disable unreachable statement warnings globally
+
+# For any method assign errors in the stub modules, we need to ignore them
+disallow_assigning_to_methods = false
 
 # Handle third-party libraries without type stubs
 [[tool.mypy.overrides]]
@@ -100,6 +103,7 @@ module = [
     "recsys_lite.cli",
 ]
 ignore_errors = true
+warn_unreachable = false
 
 # Ignore __init__ module errors - contains stub implementations
 [[tool.mypy.overrides]]

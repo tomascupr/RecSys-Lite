@@ -119,32 +119,26 @@ def test_create_consumer_invalid():
 
 def test_rabbitmq_consumer_import_error():
     """Test RabbitMQ consumer import error."""
+    # We can't use the stub system's automatic imports in CI,
+    # so we'll directly test the error handling in create_consumer
     with mock.patch.dict("sys.modules", {"pika": None}):
-        # Mock a temporary implementation of RabbitMQConsumer for testing
-        class TempRabbitMQConsumer:
-            def __init__(self):
-                # This will trigger an ImportError
-                import sys
-                if "pika" not in sys.modules:
-                    raise ImportError("RabbitMQ support requires pika package.")
+        from recsys_lite.ingest.ingest import create_consumer
         
-        with pytest.raises(ImportError):
-            TempRabbitMQConsumer()
+        with pytest.raises(ImportError, match="RabbitMQ support requires pika package"):
+            # Pass config as a dictionary, not a string
+            create_consumer("rabbitmq", {"host": "dummy_host"})
 
 
 def test_kafka_consumer_import_error():
     """Test Kafka consumer import error."""
+    # We can't use the stub system's automatic imports in CI,
+    # so we'll directly test the error handling in create_consumer
     with mock.patch.dict("sys.modules", {"kafka": None}):
-        # Mock a temporary implementation of KafkaConsumer for testing
-        class TempKafkaConsumer:
-            def __init__(self):
-                # This will trigger an ImportError
-                import sys
-                if "kafka" not in sys.modules:
-                    raise ImportError("Kafka support requires kafka-python package.")
+        from recsys_lite.ingest.ingest import create_consumer
         
-        with pytest.raises(ImportError):
-            TempKafkaConsumer()
+        with pytest.raises(ImportError, match="Kafka support requires kafka-python package"):
+            # Pass config as a dictionary, not a string
+            create_consumer("kafka", {"bootstrap_servers": "dummy_server"})
 
 
 def test_rabbitmq_connect_error():

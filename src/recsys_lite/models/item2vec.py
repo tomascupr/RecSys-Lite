@@ -2,19 +2,19 @@
 
 import os
 import pickle
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Tuple, Union
 
 import numpy as np
-from numpy.typing import NDArray
 import scipy.sparse as sp
 from gensim.models import Word2Vec
+from numpy.typing import NDArray
 
 from recsys_lite.models.base import BaseRecommender, ModelRegistry
 
 
 class Item2VecModel(BaseRecommender):
     """Item2Vec model for item embeddings."""
-    
+
     model_type = "item2vec"
 
     def __init__(
@@ -49,7 +49,8 @@ class Item2VecModel(BaseRecommender):
         """Fit the Item2Vec model.
 
         Args:
-            user_item_matrix: A sparse user-item interaction matrix or any object that can be converted to sessions
+            user_item_matrix: A sparse user-item interaction matrix or any object
+                that can be converted to sessions
             **kwargs: Additional model-specific parameters
         """
         # Item2Vec normally works with sessions, not a matrix
@@ -197,7 +198,7 @@ class Item2VecModel(BaseRecommender):
         # Load item vectors
         with open(os.path.join(path, "item_vectors.pkl"), "rb") as f:
             self.item_vectors = pickle.load(f)
-            
+
     def _get_model_state(self) -> Dict[str, Any]:
         """Get model state for serialization."""
         return {
@@ -211,7 +212,7 @@ class Item2VecModel(BaseRecommender):
             "epochs": self.epochs,
             "word2vec_model": self.model,
         }
-    
+
     def _set_model_state(self, model_state: Dict[str, Any]) -> None:
         """Set model state from deserialized data."""
         self.item_vectors = model_state.get("item_vectors", {})
@@ -222,7 +223,7 @@ class Item2VecModel(BaseRecommender):
         self.ns_exponent = model_state.get("ns_exponent", 0.75)
         self.sg = model_state.get("sg", 1)
         self.epochs = model_state.get("epochs", 5)
-        
+
         # Restore Word2Vec model if available
         word2vec_model = model_state.get("word2vec_model")
         if word2vec_model is not None:
@@ -239,19 +240,19 @@ class Item2VecModel(BaseRecommender):
                 epochs=self.epochs,
                 workers=0,  # Use all available cores
             )
-            
+
     def get_item_vectors(self, item_ids: List[Union[str, int]]) -> NDArray[np.float32]:
         """Get item vectors for specified items.
-        
+
         Args:
             item_ids: List of item IDs
-            
+
         Returns:
             Item vectors matrix
         """
         # Convert all item IDs to strings for lookup in the item_vectors dictionary
         str_item_ids = [str(item_id) for item_id in item_ids]
-        
+
         # Get vectors for the items that exist in our dictionary
         vectors = []
         for item_id in str_item_ids:
@@ -260,10 +261,10 @@ class Item2VecModel(BaseRecommender):
             else:
                 # If item not found, add a zero vector
                 vectors.append(np.zeros(self.size, dtype=np.float32))
-        
+
         if not vectors:
             return np.array([], dtype=np.float32)
-            
+
         return np.array(vectors, dtype=np.float32)
 
 

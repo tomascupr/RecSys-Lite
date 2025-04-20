@@ -5,6 +5,23 @@ All notable changes to the RecSys-Lite project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Pagination support for recommendation and similar-items endpoints
+- Comprehensive filtering capabilities for recommendation endpoints:
+  - Category-based filtering
+  - Brand-based filtering
+  - Price range filtering (min/max price)
+  - Item exclusion and inclusion lists
+- Enhanced response format with pagination and filter information
+- Automatic buffer sizing when filtering to maintain result count
+
+### Changed
+- Recommendation endpoints now use a more consistent response format
+- Similar-items endpoint now returns same format as recommendations endpoint
+- Improved error handling for pagination and filter parameters
+
 ## [0.2.0] - 2025-04-19
 
 ### Added

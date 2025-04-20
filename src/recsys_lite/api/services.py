@@ -239,6 +239,149 @@ class RecommendationService:
             return [{} for _ in item_ids]
 
         return [item_data.get(item_id, {}) for item_id in item_ids]
+    
+    def filter_recommendations(
+        self, 
+        item_ids: List[str], 
+        scores: List[float], 
+        item_metadata: List[Dict[str, Any]],
+        categories: Optional[List[str]] = None,
+        brands: Optional[List[str]] = None,
+        min_price: Optional[float] = None,
+        max_price: Optional[float] = None,
+        exclude_items: Optional[List[str]] = None,
+        include_items: Optional[List[str]] = None
+    ) -> Tuple[List[str], List[float], List[Dict[str, Any]], Dict[str, Any]]:
+        """Filter recommendations based on provided criteria.
+        
+        Args:
+            item_ids: List of item IDs
+            scores: List of scores
+            item_metadata: List of item metadata dictionaries
+            categories: List of categories to include
+            brands: List of brands to include
+            min_price: Minimum price
+            max_price: Maximum price
+            exclude_items: Item IDs to exclude
+            include_items: Limit to these item IDs
+            
+        Returns:
+            Tuple of (filtered_item_ids, filtered_scores, filtered_item_metadata, filter_info)
+        """
+        filtered_items = []
+        filtered_scores = []
+        filtered_metadata = []
+        
+        # Track filter metrics
+        filter_info = {
+            "original_count": len(item_ids),
+            "filtered_count": 0,
+            "filters_applied": {}
+        }
+        
+        # Create exclusion set for fast lookups
+        exclusion_set = set(exclude_items or [])
+        
+        # Create inclusion set if provided
+        inclusion_set = set(include_items or [])
+        has_inclusion_filter = bool(inclusion_set)
+        
+        # Track which filters were applied
+        if categories:
+            filter_info["filters_applied"]["categories"] = categories
+        if brands:
+            filter_info["filters_applied"]["brands"] = brands
+        if min_price is not None:
+            filter_info["filters_applied"]["min_price"] = min_price
+        if max_price is not None:
+            filter_info["filters_applied"]["max_price"] = max_price
+        if exclude_items:
+            filter_info["filters_applied"]["excluded_items"] = len(exclude_items)
+        if include_items:
+            filter_info["filters_applied"]["included_items"] = len(include_items)
+        
+        for item_id, score, metadata in zip(item_ids, scores, item_metadata, strict=False):
+            # Skip excluded items
+            if item_id in exclusion_set:
+                continue
+                
+            # Skip if not in inclusion set (when provided)
+            if has_inclusion_filter and item_id not in inclusion_set:
+                continue
+                
+            # Filter by category
+            if categories and metadata.get("category") not in categories:
+                continue
+                
+            # Filter by brand
+            if brands and metadata.get("brand") not in brands:
+                continue
+                
+            # Filter by price
+            price = metadata.get("price")
+            if price is not None:
+                if min_price is not None and price < min_price:
+                    continue
+                if max_price is not None and price > max_price:
+                    continue
+            elif min_price is not None or max_price is not None:
+                # If we're filtering by price but this item has no price, skip it
+                continue
+                
+            # Item passed all filters
+            filtered_items.append(item_id)
+            filtered_scores.append(score)
+            filtered_metadata.append(metadata)
+        
+        filter_info["filtered_count"] = len(filtered_items)
+        return filtered_items, filtered_scores, filtered_metadata, filter_info
+        
+    def paginate_results(
+        self,
+        item_ids: List[str],
+        scores: List[float],
+        item_metadata: List[Dict[str, Any]],
+        page: int = 1,
+        page_size: int = 10
+    ) -> Tuple[List[str], List[float], List[Dict[str, Any]], Dict[str, Any]]:
+        """Paginate recommendations.
+        
+        Args:
+            item_ids: List of item IDs
+            scores: List of scores
+            item_metadata: List of item metadata dictionaries
+            page: Page number (1-based)
+            page_size: Number of items per page
+            
+        Returns:
+            Tuple of (paginated_item_ids, paginated_scores, paginated_item_metadata, pagination_info)
+        """
+        total_items = len(item_ids)
+        total_pages = max(1, (total_items + page_size - 1) // page_size)
+        
+        # Ensure page is within valid range
+        page = max(1, min(page, total_pages))
+        
+        # Calculate slice indices
+        start_idx = (page - 1) * page_size
+        end_idx = min(start_idx + page_size, total_items)
+        
+        pagination_info = {
+            "total": total_items,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+            "has_next": page < total_pages,
+            "has_prev": page > 1
+        }
+        
+        # Return paginated results
+        return (
+            item_ids[start_idx:end_idx],
+            scores[start_idx:end_idx],
+            item_metadata[start_idx:end_idx],
+            pagination_info
+        )
 
     def find_similar_items(
         self, item_id: str, k: int = 10, item_data: Optional[Dict[str, Dict[str, Any]]] = None

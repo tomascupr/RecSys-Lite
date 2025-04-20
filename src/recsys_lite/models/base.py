@@ -135,13 +135,12 @@ class FactorizationModelMixin:
         """
         if self.item_factors is None:
             return np.array([], dtype=np.float32)
-
-        # For factorization models, item_ids are typically indices
-        indices = [int(item_id) for item_id in item_ids if int(item_id) < len(self.item_factors or [])]
+            
+        item_factor_length = self.item_factors.shape[0]
+        indices = [int(item_id) for item_id in item_ids if int(item_id) < item_factor_length]
         if not indices:
             return np.array([], dtype=np.float32)
-        # Need to apply assertion for mypy to understand the type
-        assert self.item_factors is not None
+        
         return self.item_factors[indices]
 
     def get_user_vectors(self, user_ids: List[Union[str, int]]) -> FloatArray:
@@ -157,11 +156,11 @@ class FactorizationModelMixin:
             return np.array([], dtype=np.float32)
 
         # For factorization models, user_ids are typically indices
-        indices = [int(user_id) for user_id in user_ids if int(user_id) < len(self.user_factors or [])]
+        user_factor_length = self.user_factors.shape[0]
+        indices = [int(user_id) for user_id in user_ids if int(user_id) < user_factor_length]
         if not indices:
             return np.array([], dtype=np.float32)
-        # Need to apply assertion for mypy to understand the type
-        assert self.user_factors is not None
+            
         return self.user_factors[indices]
 
 

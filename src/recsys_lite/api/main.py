@@ -68,13 +68,15 @@ def create_app(model_dir: Union[str, Path] = "model_artifacts/als") -> FastAPI:
             rec_service = setup_recommendation_service(Path(model_dir))
 
             # Store service in app state
+            state.recommendation_service = rec_service
             state.model = rec_service.model
             state.model_type = rec_service.model_type
-
+            
             # Store model information
-            state.model_type = rec_service.model_type
             state.user_mapping = rec_service.user_mapping
             state.item_mapping = rec_service.item_mapping
+            state.reverse_user_mapping = {int(v): k for k, v in rec_service.user_mapping.items()}
+            state.reverse_item_mapping = {int(v): k for k, v in rec_service.item_mapping.items()}
 
             logger.info(f"API initialized with model type: {rec_service.model_type}")
         except Exception as e:

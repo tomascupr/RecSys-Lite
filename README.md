@@ -213,15 +213,27 @@ poetry run pytest
 ### Recommendation Endpoint
 
 ```
-GET /recommend?user_id=<user_id>&k=<k>&use_faiss=<true|false>
+GET /recommend?user_id=<user_id>&k=<k>&use_faiss=<true|false>&page=<page>&page_size=<page_size>&categories=<cat1>&categories=<cat2>&brands=<brand1>&min_price=<min>&max_price=<max>&exclude_items=<item1>&include_items=<item2>
 ```
 
-Returns a list of recommended items for a user.
+Returns a list of recommended items for a user with pagination and filtering support.
 
 **Parameters**:
 - `user_id` (required): User ID to get recommendations for
 - `k` (optional): Number of recommendations to return (default: 10)
 - `use_faiss` (optional): Whether to use Faiss index for similarity search (default: true)
+
+**Pagination Parameters**:
+- `page` (optional): Page number, 1-based (default: 1)
+- `page_size` (optional): Number of items per page, max 100 (default: 10)
+
+**Filtering Parameters**:
+- `categories` (optional): Filter by categories (can specify multiple)
+- `brands` (optional): Filter by brands (can specify multiple)
+- `min_price` (optional): Minimum price filter
+- `max_price` (optional): Maximum price filter
+- `exclude_items` (optional): Item IDs to exclude (can specify multiple)
+- `include_items` (optional): Limit to these item IDs (can specify multiple)
 
 **Response**:
 ```json
@@ -238,7 +250,24 @@ Returns a list of recommended items for a user.
       "img_url": "https://example.com/image.jpg"
     },
     ...
-  ]
+  ],
+  "pagination": {
+    "total": 120,
+    "page": 1,
+    "page_size": 10,
+    "total_pages": 12,
+    "has_next": true,
+    "has_prev": false
+  },
+  "filter_info": {
+    "original_count": 50,
+    "filtered_count": 25,
+    "filters_applied": {
+      "categories": ["Electronics", "Tech"],
+      "min_price": 10.0,
+      "max_price": 100.0
+    }
+  }
 }
 ```
 
@@ -250,29 +279,59 @@ Returns a list of recommended items for a user.
 ### Similar Items Endpoint
 
 ```
-GET /similar-items?item_id=<item_id>&k=<k>
+GET /similar-items?item_id=<item_id>&k=<k>&page=<page>&page_size=<page_size>&categories=<cat1>&brands=<brand1>&min_price=<min>&max_price=<max>&exclude_items=<item1>
 ```
 
-Returns a list of items similar to the given item.
+Returns a list of items similar to the given item with pagination and filtering support.
 
 **Parameters**:
 - `item_id` (required): Item ID to find similar items for
 - `k` (optional): Number of similar items to return (default: 10)
 
+**Pagination Parameters**:
+- `page` (optional): Page number, 1-based (default: 1)
+- `page_size` (optional): Number of items per page, max 100 (default: 10)
+
+**Filtering Parameters**:
+- `categories` (optional): Filter by categories (can specify multiple)
+- `brands` (optional): Filter by brands (can specify multiple)
+- `min_price` (optional): Minimum price filter
+- `max_price` (optional): Maximum price filter
+- `exclude_items` (optional): Item IDs to exclude (can specify multiple)
+
 **Response**:
 ```json
-[
-  {
-    "item_id": "item789",
-    "score": 0.92,
-    "title": "Similar Product",
-    "category": "Category",
-    "brand": "Brand",
-    "price": 79.99,
-    "img_url": "https://example.com/similar.jpg"
+{
+  "user_id": "item123",
+  "recommendations": [
+    {
+      "item_id": "item789",
+      "score": 0.92,
+      "title": "Similar Product",
+      "category": "Category",
+      "brand": "Brand",
+      "price": 79.99,
+      "img_url": "https://example.com/similar.jpg"
+    },
+    ...
+  ],
+  "pagination": {
+    "total": 42,
+    "page": 1,
+    "page_size": 10,
+    "total_pages": 5,
+    "has_next": true,
+    "has_prev": false
   },
-  ...
-]
+  "filter_info": {
+    "original_count": 30,
+    "filtered_count": 15,
+    "filters_applied": {
+      "brands": ["BrandName"],
+      "excluded_items": 2
+    }
+  }
+}
 ```
 
 **Error Responses**:

@@ -96,17 +96,11 @@ class HybridModel(BaseRecommender):
             return np.array([], dtype=np.int_), np.array([], dtype=np.float32)
 
         # Determine weights (dynamic or static)
-        weights = (
-            self._get_dynamic_weights(user_id, user_items)
-            if self.dynamic_weighting
-            else self.weights
-        )
+        weights = self._get_dynamic_weights(user_id, user_items) if self.dynamic_weighting else self.weights
 
         # Log weights for debugging
         if logger.isEnabledFor(logging.DEBUG):
-            weight_info = ", ".join(
-                [f"{m.model_type}:{w:.2f}" for m, w in zip(self.models, weights, strict=False)]
-            )
+            weight_info = ", ".join([f"{m.model_type}:{w:.2f}" for m, w in zip(self.models, weights, strict=False)])
             logger.debug(f"Model weights for user {user_id}: {weight_info}")
 
         # Get recommendations from each model
@@ -158,9 +152,7 @@ class HybridModel(BaseRecommender):
         scores_arr = np.array(list(scores_list), dtype=np.float32)
         return item_ids_arr, scores_arr
 
-    def _get_dynamic_weights(
-        self, user_id: Union[int, str], user_items: sp.csr_matrix
-    ) -> List[float]:
+    def _get_dynamic_weights(self, user_id: Union[int, str], user_items: sp.csr_matrix) -> List[float]:
         """Dynamically adjust weights based on user interaction count.
 
         Args:
@@ -273,9 +265,7 @@ class HybridModel(BaseRecommender):
         self.weights = model_state.get("weights", [])
         self.dynamic_weighting = model_state.get("dynamic_weighting", True)
         self.cold_start_threshold = model_state.get("cold_start_threshold", 5)
-        self.content_models = model_state.get(
-            "content_models", ["text_embedding", "lightfm", "item2vec"]
-        )
+        self.content_models = model_state.get("content_models", ["text_embedding", "lightfm", "item2vec"])
         self.collaborative_models = model_state.get("collaborative_models", ["als", "bpr", "ease"])
         self.cold_start_strategy = model_state.get("cold_start_strategy", "content_boost")
 

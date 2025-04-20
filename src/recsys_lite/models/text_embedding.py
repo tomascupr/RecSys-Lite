@@ -82,9 +82,7 @@ class TextEmbeddingModel(BaseRecommender):
         # Use MKL acceleration for numpy if available
         os.environ["MKL_NUM_THREADS"] = str(os.cpu_count() or 4)
 
-    def _prepare_item_text(
-        self, item_data: Dict[str, Dict[str, Any]]
-    ) -> Tuple[List[str], List[str]]:
+    def _prepare_item_text(self, item_data: Dict[str, Dict[str, Any]]) -> Tuple[List[str], List[str]]:
         """Prepare item text for embedding generation with weighted fields.
 
         Args:
@@ -140,8 +138,7 @@ class TextEmbeddingModel(BaseRecommender):
             from sentence_transformers import SentenceTransformer
         except ImportError:
             logger.error(
-                "The sentence-transformers package is required. "
-                "Install with: pip install sentence-transformers"
+                "The sentence-transformers package is required. " "Install with: pip install sentence-transformers"
             )
             raise
 
@@ -209,9 +206,7 @@ class TextEmbeddingModel(BaseRecommender):
                             logger.info("Using ONNX acceleration for faster inference")
                             # Re-initialize with ONNX backend
                             self.model = SentenceTransformer(
-                                modules=[
-                                    ORTModelForFeatureExtraction.from_pretrained(str(onnx_path))
-                                ]
+                                modules=[ORTModelForFeatureExtraction.from_pretrained(str(onnx_path))]
                             )
                             self.using_onnx = True
                             logger.info("ONNX acceleration enabled successfully")
@@ -286,9 +281,7 @@ class TextEmbeddingModel(BaseRecommender):
             with open(ids_path, "w") as f:
                 json.dump(item_ids, f)
 
-        logger.info(
-            f"Generated {embeddings.shape[0]} embeddings with dimension {embeddings.shape[1]}"
-        )
+        logger.info(f"Generated {embeddings.shape[0]} embeddings with dimension {embeddings.shape[1]}")
 
     def recommend(
         self,
@@ -340,9 +333,7 @@ class TextEmbeddingModel(BaseRecommender):
             return np.array([], dtype=np.int_), np.array([], dtype=np.float32)
 
         # Calculate user profile as weighted average of item embeddings
-        item_indices = [
-            self.id_to_idx[item_id] for item_id in interacted_item_ids if item_id in self.id_to_idx
-        ]
+        item_indices = [self.id_to_idx[item_id] for item_id in interacted_item_ids if item_id in self.id_to_idx]
 
         if not item_indices:
             logger.debug(f"No matching items found in embeddings for user {user_id}")
@@ -374,9 +365,7 @@ class TextEmbeddingModel(BaseRecommender):
         sorted_indices = np.argsort(-scores)
 
         # Filter out items the user has already interacted with
-        filtered_indices = [
-            idx for idx in sorted_indices if self.item_ids[idx] not in interacted_item_ids
-        ]
+        filtered_indices = [idx for idx in sorted_indices if self.item_ids[idx] not in interacted_item_ids]
 
         # Get top N items
         top_indices = filtered_indices[:n_items]
@@ -439,8 +428,7 @@ class TextEmbeddingModel(BaseRecommender):
                     self.embedding_dim = self.model.get_sentence_embedding_dimension()
             except ImportError:
                 logger.error(
-                    "The sentence-transformers package is required. "
-                    "Install with: pip install sentence-transformers"
+                    "The sentence-transformers package is required. " "Install with: pip install sentence-transformers"
                 )
                 raise
 

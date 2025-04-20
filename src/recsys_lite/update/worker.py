@@ -139,18 +139,14 @@ class UpdateWorker:
         data = events_df["qty"].values
 
         # Create sparse matrix
-        user_item_matrix = sp.csr_matrix(
-            (data, (row_indices, col_indices)), shape=(n_users, n_items)
-        )
+        user_item_matrix = sp.csr_matrix((data, (row_indices, col_indices)), shape=(n_users, n_items))
 
         # Extract user IDs as numpy array (for partial_fit_users)
         user_ids = np.array(list(user_mapping.keys()))
 
         return user_item_matrix, user_ids, new_items
 
-    def _update_user_factors(
-        self, user_item_matrix: sp.csr_matrix, user_ids: NDArray[np.int_]
-    ) -> None:
+    def _update_user_factors(self, user_item_matrix: sp.csr_matrix, user_ids: NDArray[np.int_]) -> None:
         """Update user factors for new events.
 
         Args:

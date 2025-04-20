@@ -1,7 +1,7 @@
 """Recommendation models for RecSys-Lite."""
 
 # We'll use this approach to simplify imports and avoid mypy warnings
-from typing import Any, Optional, Type
+from typing import Any, Dict, Optional, Type
 
 # Import is_ci to determine if we're in a CI environment
 from recsys_lite import is_ci
@@ -20,8 +20,8 @@ from recsys_lite.models.text_embedding_mock import TextEmbeddingModel as TextEmb
 
 # Create an import registry to manage both real and mock implementations
 class _ModelImporter:
-    def __init__(self):
-        self.registry = {}
+    def __init__(self) -> None:
+        self.registry: Dict[str, Type[BaseRecommender]] = {}
 
     def register(self, model_type: str, model_class: Type[BaseRecommender]) -> None:
         self.registry[model_type] = model_class
@@ -31,7 +31,7 @@ class _ModelImporter:
         if result is None:
             return None
         # Cast the result to the expected type to satisfy mypy
-        return result  # type: ignore
+        return result
 
 
 # Global importer

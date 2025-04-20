@@ -8,7 +8,7 @@ import numpy as np
 import scipy.sparse as sp
 from lightfm import LightFM
 
-from recsys_lite.models.base import BaseRecommender
+from recsys_lite.models.base import BaseRecommender, FloatArray, IntArray
 
 
 class LightFMModel(BaseRecommender):
@@ -82,11 +82,11 @@ class LightFMModel(BaseRecommender):
 
     def predict(
         self,
-        user_ids: np.ndarray,
-        item_ids: np.ndarray,
+        user_ids: IntArray,
+        item_ids: IntArray,
         user_features: Optional[sp.csr_matrix] = None,
         item_features: Optional[sp.csr_matrix] = None,
-    ) -> np.ndarray:
+    ) -> FloatArray:
         """Predict scores for user-item pairs.
 
         Args:
@@ -113,7 +113,7 @@ class LightFMModel(BaseRecommender):
         user_items: sp.csr_matrix,
         n_items: int = 10,
         **kwargs: Any,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> Tuple[IntArray, FloatArray]:
         """Generate recommendations for a user.
 
         Args:
@@ -143,7 +143,8 @@ class LightFMModel(BaseRecommender):
         # Get number of items
         if self.item_embeddings is None:
             raise ValueError("Model has not been trained, item_embeddings is None")
-        n_items_total = self.item_embeddings.shape[0]
+        else:
+            n_items_total = self.item_embeddings.shape[0]
 
         # Get predictions for all items
         scores = self.predict(
@@ -163,19 +164,17 @@ class LightFMModel(BaseRecommender):
 
         return top_items, top_scores
 
-    def get_item_factors(self) -> np.ndarray:
+    def get_item_factors(self) -> FloatArray:
         """Get item factors matrix.
 
         Returns:
             Item factors matrix
         """
         if self.model.item_embeddings is None:
-            return np.array([])  # Return empty array if not initialized
-        return np.asarray(self.model.item_embeddings)
+            return np.array([], dtype=np.float32)  # Return empty array if not initialized
+        return np.asarray(self.model.item_embeddings, dtype=np.float32)
 
-    def get_item_representations(
-        self, item_features: Optional[sp.csr_matrix] = None
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    def get_item_representations(self, item_features: Optional[sp.csr_matrix] = None) -> Tuple[FloatArray, FloatArray]:
         """Get item biases and embeddings.
 
         Args:
@@ -186,14 +185,15 @@ class LightFMModel(BaseRecommender):
         """
         if item_features is not None:
             return (
-                self.model.item_biases,
-                self.model.item_embeddings @ item_features.T,
+                np.asarray(self.model.item_biases, dtype=np.float32),
+                np.asarray(self.model.item_embeddings @ item_features.T, dtype=np.float32),
             )
-        return self.model.item_biases, self.model.item_embeddings
+        return (
+            np.asarray(self.model.item_biases, dtype=np.float32),
+            np.asarray(self.model.item_embeddings, dtype=np.float32),
+        )
 
-    def get_user_representations(
-        self, user_features: Optional[sp.csr_matrix] = None
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    def get_user_representations(self, user_features: Optional[sp.csr_matrix] = None) -> Tuple[FloatArray, FloatArray]:
         """Get user biases and embeddings.
 
         Args:
@@ -204,10 +204,13 @@ class LightFMModel(BaseRecommender):
         """
         if user_features is not None:
             return (
-                self.model.user_biases,
-                self.model.user_embeddings @ user_features.T,
+                np.asarray(self.model.user_biases, dtype=np.float32),
+                np.asarray(self.model.user_embeddings @ user_features.T, dtype=np.float32),
             )
-        return self.model.user_biases, self.model.user_embeddings
+        return (
+            np.asarray(self.model.user_biases, dtype=np.float32),
+            np.asarray(self.model.user_embeddings, dtype=np.float32),
+        )
 
     def save_model(self, path: str) -> None:
         """Save model to disk.
@@ -235,12 +238,14 @@ class LightFMModel(BaseRecommender):
             pickle.dump(model_state, f)
 
         # Save features if available
+        user_features_path = os.path.join(path, "user_features.pkl")
         if self.user_features is not None:
-            with open(os.path.join(path, "user_features.pkl"), "wb") as f:
+            with open(user_features_path, "wb") as f:
                 pickle.dump(self.user_features, f)
 
+        item_features_path = os.path.join(path, "item_features.pkl")
         if self.item_features is not None:
-            with open(os.path.join(path, "item_features.pkl"), "wb") as f:
+            with open(item_features_path, "wb") as f:
                 pickle.dump(self.item_features, f)
 
     def load_model(self, path: str) -> None:

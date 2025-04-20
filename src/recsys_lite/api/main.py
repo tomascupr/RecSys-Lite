@@ -2,9 +2,9 @@
 
 import logging
 from pathlib import Path
-from typing import Union
+from typing import Any, Callable, Union, cast
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 
 from recsys_lite.api.dependencies import get_api_state
 from recsys_lite.api.errors import add_error_handlers
@@ -40,7 +40,7 @@ def create_app(model_dir: Union[str, Path] = "model_artifacts/als") -> FastAPI:
 
     # Add request middleware to count requests
     @app.middleware("http")
-    async def count_requests(request: Request, call_next):
+    async def count_requests(request: Request, call_next: Callable[[Request], Any]) -> Response:
         """Count requests middleware.
 
         Args:
@@ -53,7 +53,8 @@ def create_app(model_dir: Union[str, Path] = "model_artifacts/als") -> FastAPI:
         state = get_api_state()
         state.increase_request_count()
         response = await call_next(request)
-        return response
+        # Cast to Response - FastAPI's middleware uses Starlette Response
+        return cast(Response, response)
 
     # Load model artifacts on startup
     @app.on_event("startup")

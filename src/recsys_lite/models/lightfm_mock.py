@@ -108,7 +108,7 @@ class LightFMModel(BaseRecommender):
             return np.array([], dtype=np.float32)  # Return empty array if not initialized
         return np.asarray(self.item_embeddings, dtype=np.float32)
 
-    def predict(self, user_ids: np.ndarray, item_ids: np.ndarray) -> np.ndarray:
+    def predict(self, user_ids: NDArray[np.int_], item_ids: NDArray[np.int_]) -> NDArray[np.float32]:
         """Predict scores for the given user-item pairs.
 
         Args:
@@ -122,10 +122,10 @@ class LightFMModel(BaseRecommender):
             raise ValueError("Model has not been trained")
 
         # Generate random scores for the given user-item pairs
-        scores = np.random.random(len(user_ids))
+        scores = np.random.random(len(user_ids)).astype(np.float32)
         return scores
 
-    def get_item_representations(self) -> Tuple[np.ndarray, np.ndarray]:
+    def get_item_representations(self) -> Tuple[NDArray[np.float64], NDArray[np.float32]]:
         """Get item biases and embeddings.
 
         Returns:

@@ -6,10 +6,12 @@ from typing import Any, Dict, List, Tuple, Union
 
 import numpy as np
 import scipy.sparse as sp
-from gensim.models import Word2Vec
-from numpy.typing import NDArray
+try:
+    from gensim.models import Word2Vec
+except ImportError:
+    Word2Vec = None
 
-from recsys_lite.models.base import BaseRecommender, ModelRegistry
+from recsys_lite.models.base import BaseRecommender, FloatArray, IntArray, ModelRegistry
 
 
 class Item2VecModel(BaseRecommender):
@@ -40,17 +42,17 @@ class Item2VecModel(BaseRecommender):
             min_count=min_count,
             sg=sg,
             epochs=epochs,
-            workers=0,  # Use all available cores
+            workers=0,  # Use all available cores, 0 is automatically converted to cpu_count()
         )
-        self.item_vectors: Dict[str, np.ndarray] = {}
+        self.item_vectors: Dict[str, FloatArray] = {}
         self.user_item_sessions: Dict[Union[int, str], List[str]] = {}
 
-    def fit(self, user_item_matrix, **kwargs: Any) -> None:
+    def fit(self, user_item_matrix: Union[sp.csr_matrix, List[List[str]]], **kwargs: Any) -> None:
         """Fit the Item2Vec model.
 
         Args:
-            user_item_matrix: A sparse user-item interaction matrix or any object
-                that can be converted to sessions
+            user_item_matrix: A sparse user-item interaction matrix or a list of sessions
+                where each session is a list of item IDs
             **kwargs: Additional model-specific parameters
         """
         # Item2Vec normally works with sessions, not a matrix
@@ -86,7 +88,7 @@ class Item2VecModel(BaseRecommender):
         user_items: sp.csr_matrix,
         n_items: int = 10,
         **kwargs: Any,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> Tuple[IntArray, FloatArray]:
         """Generate recommendations for a user.
 
         Args:
@@ -136,25 +138,29 @@ class Item2VecModel(BaseRecommender):
         top_items = similar_items[:n_items]
 
         # Return item IDs and scores
-        item_ids = np.array([item_id for item_id, _ in top_items])
-        scores = np.array([score for _, score in top_items])
+        item_ids = np.array([int(item_id) for item_id, _ in top_items], dtype=np.int_)
+        scores = np.array([score for _, score in top_items], dtype=np.float32)
 
         return item_ids, scores
 
     def _update_item_vectors(self) -> None:
         """Update item vectors from trained model."""
         items = list(self.model.wv.index_to_key)
-        self.item_vectors = {item: np.array(self.model.wv[item]) for item in items}
+        self.item_vectors = {item: np.array(self.model.wv[item], dtype=np.float32) for item in items}
 
-    def get_item_vectors_dict(self) -> Dict[str, np.ndarray]:
+    def get_item_vectors_dict(self) -> Dict[str, FloatArray]:
         """Get item vectors dictionary.
 
         Returns:
             Dictionary mapping item IDs to embeddings
         """
-        return self.item_vectors
+        # Convert each np.ndarray to FloatArray
+        result: Dict[str, FloatArray] = {}
+        for item_id, vector in self.item_vectors.items():
+            result[item_id] = np.array(vector, dtype=np.float32)
+        return result
 
-    def get_item_vectors_matrix(self, item_ids: List[str]) -> NDArray[np.float32]:
+    def get_item_vectors_matrix(self, item_ids: List[str]) -> FloatArray:
         """Get item vectors as a matrix.
 
         Args:
@@ -233,7 +239,7 @@ class Item2VecModel(BaseRecommender):
                 workers=0,  # Use all available cores
             )
 
-    def get_item_vectors(self, item_ids: List[Union[str, int]]) -> NDArray[np.float32]:
+    def get_item_vectors(self, item_ids: List[Union[str, int]]) -> FloatArray:
         """Get item vectors for specified items.
 
         Args:

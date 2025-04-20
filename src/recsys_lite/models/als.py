@@ -11,7 +11,7 @@ from recsys_lite.models.base import BaseRecommender, FactorizationModelMixin
 
 class ALSModel(BaseRecommender, FactorizationModelMixin):
     """Alternating Least Squares model for collaborative filtering."""
-    
+
     model_type = "als"
 
     def __init__(
@@ -99,7 +99,7 @@ class ALSModel(BaseRecommender, FactorizationModelMixin):
 
     def _get_model_state(self) -> Dict[str, Any]:
         """Get model state for serialization.
-        
+
         Returns:
             Dictionary with model state
         """
@@ -111,10 +111,10 @@ class ALSModel(BaseRecommender, FactorizationModelMixin):
             "user_factors": self.user_factors,
             "item_factors": self.item_factors,
         }
-    
+
     def _set_model_state(self, model_state: Dict[str, Any]) -> None:
         """Set model state from deserialized data.
-        
+
         Args:
             model_state: Dictionary with model state
         """

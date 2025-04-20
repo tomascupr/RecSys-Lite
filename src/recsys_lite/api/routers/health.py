@@ -13,7 +13,7 @@ router = APIRouter()
 @router.get("/health")
 async def health() -> Dict[str, str]:
     """Health check endpoint.
-    
+
     Returns:
         Health status
     """
@@ -25,10 +25,10 @@ async def metrics(
     stats: Dict[str, Any] = Depends(get_stats),
 ) -> MetricsResponse:
     """Metrics endpoint for monitoring.
-    
+
     Args:
         stats: Statistics from app state
-        
+
     Returns:
         Metrics response
     """

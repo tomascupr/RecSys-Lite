@@ -17,8 +17,9 @@ pytestmark = pytest.mark.skipif(
 )
 
 try:
-    from recsys_lite.api.main import Recommendation, RecommendationResponse, create_app
+    from recsys_lite.api.main import Recommendation, RecommendationResponse
     from recsys_lite.api.main import app as default_app
+    from recsys_lite.api.main import create_app
     HAS_DEPENDENCIES = True
 except ImportError:
     # For environments where dependencies might be missing

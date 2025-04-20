@@ -103,9 +103,7 @@ class TextEmbeddingModel(BaseRecommender):
         np.random.shuffle(all_item_indices)
 
         # Filter out interacted items
-        filtered_indices = [
-            i for i in all_item_indices if self.item_ids[i] not in interacted_item_ids
-        ]
+        filtered_indices = [i for i in all_item_indices if self.item_ids[i] not in interacted_item_ids]
 
         # Get top N items
         top_indices = filtered_indices[:n_items]

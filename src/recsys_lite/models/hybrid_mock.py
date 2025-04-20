@@ -89,9 +89,7 @@ class HybridModel(BaseRecommender):
         self.weights = model_state.get("weights", [])
         self.dynamic_weighting = model_state.get("dynamic_weighting", True)
         self.cold_start_threshold = model_state.get("cold_start_threshold", 5)
-        self.content_models = model_state.get(
-            "content_models", ["text_embedding", "lightfm", "item2vec"]
-        )
+        self.content_models = model_state.get("content_models", ["text_embedding", "lightfm", "item2vec"])
         self.collaborative_models = model_state.get("collaborative_models", ["als", "bpr", "ease"])
         self.cold_start_strategy = model_state.get("cold_start_strategy", "content_boost")
 

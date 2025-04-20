@@ -25,17 +25,17 @@ async def recommend(
     state: APIState = Depends(get_api_state),
 ) -> RecommendationResponse:
     """Get recommendations for a user.
-    
+
     Args:
         user_id: User ID to get recommendations for
         k: Number of recommendations to return
         use_faiss: Whether to use Faiss index (faster) or direct model predictions
         recommendation_service: Recommendation service from dependency injection
         state: API state for metrics
-        
+
     Returns:
         Recommendation response
-    
+
     Raises:
         UserNotFoundError: If user ID is not found
         ModelNotInitializedError: If recommendation system is not initialized
@@ -43,11 +43,9 @@ async def recommend(
     try:
         # Get recommendations
         item_ids, scores, item_metadata = recommendation_service.recommend_for_user(
-            user_id=user_id,
-            k=k,
-            use_faiss=use_faiss
+            user_id=user_id, k=k, use_faiss=use_faiss
         )
-        
+
         # Create recommendation objects
         recommendations = [
             Recommendation(
@@ -61,10 +59,10 @@ async def recommend(
             )
             for item_id, score, metadata in zip(item_ids, scores, item_metadata, strict=False)
         ]
-        
+
         # Update metrics
         state.increase_recommendation_count(len(recommendations))
-        
+
         # Return response
         return RecommendationResponse(
             user_id=user_id,
@@ -88,27 +86,24 @@ async def similar_items(
     state: APIState = Depends(get_api_state),
 ) -> List[Recommendation]:
     """Get similar items.
-    
+
     Args:
         item_id: Item ID to find similar items for
         k: Number of similar items to return
         recommendation_service: Recommendation service from dependency injection
         state: API state for metrics
-        
+
     Returns:
         List of similar items
-    
+
     Raises:
         ItemNotFoundError: If item ID is not found
         ModelNotInitializedError: If recommendation system is not initialized
     """
     try:
         # Get similar items
-        item_ids, scores, item_metadata = recommendation_service.find_similar_items(
-            item_id=item_id,
-            k=k
-        )
-        
+        item_ids, scores, item_metadata = recommendation_service.find_similar_items(item_id=item_id, k=k)
+
         # Create recommendation objects
         recommendations = [
             Recommendation(
@@ -120,13 +115,12 @@ async def similar_items(
                 price=metadata.get("price"),
                 img_url=metadata.get("img_url"),
             )
-            for similar_item_id, score, metadata in zip(
-                item_ids, scores, item_metadata, strict=False)
+            for similar_item_id, score, metadata in zip(item_ids, scores, item_metadata, strict=False)
         ]
-        
+
         # Update metrics
         state.increase_recommendation_count(len(recommendations))
-        
+
         # Return response
         return recommendations
     except (ItemNotFoundError, ModelNotInitializedError):

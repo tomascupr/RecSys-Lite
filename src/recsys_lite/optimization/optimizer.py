@@ -133,9 +133,7 @@ class OptunaOptimizer:
             model.fit(train_data)
 
             # Evaluate model
-            score = self._evaluate(
-                model, train_data, valid_data, self.k, user_mapping, item_mapping
-            )
+            score = self._evaluate(model, train_data, valid_data, self.k, user_mapping, item_mapping)
 
             return score
 

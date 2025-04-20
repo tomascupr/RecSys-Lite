@@ -10,7 +10,7 @@ from recsys_lite.models.base import BaseRecommender
 
 class APIState:
     """Container for API shared state."""
-    
+
     def __init__(self) -> None:
         """Initialize API state."""
         # Model and mapping data
@@ -23,37 +23,37 @@ class APIState:
         self.model: Optional[BaseRecommender] = None
         self.model_type: Optional[str] = None
         self.user_item_matrix: Optional[sp.csr_matrix] = None
-        
+
         # Performance metrics
         self.request_count: int = 0
         self.recommendation_count: int = 0
         self.error_count: int = 0
         self.start_time: float = time.time()
-    
+
     def increase_request_count(self) -> None:
         """Increment request counter."""
         self.request_count += 1
-    
+
     def increase_recommendation_count(self, count: int = 1) -> None:
         """Increment recommendation counter.
-        
+
         Args:
             count: Number of recommendations to add
         """
         self.recommendation_count += count
-    
+
     def increase_error_count(self) -> None:
         """Increment error counter."""
         self.error_count += 1
-    
+
     def get_metrics(self) -> Dict[str, Any]:
         """Get current metrics.
-        
+
         Returns:
             Dictionary of metrics
         """
         uptime = time.time() - self.start_time
-        
+
         return {
             "uptime_seconds": round(uptime, 2),
             "request_count": self.request_count,

@@ -11,7 +11,7 @@ from recsys_lite.models.base import BaseRecommender, FactorizationModelMixin
 
 class BPRModel(BaseRecommender, FactorizationModelMixin):
     """Bayesian Personalized Ranking model for collaborative filtering."""
-    
+
     model_type = "bpr"
 
     def __init__(
@@ -98,7 +98,7 @@ class BPRModel(BaseRecommender, FactorizationModelMixin):
 
     def _get_model_state(self) -> Dict[str, Any]:
         """Get model state for serialization.
-        
+
         Returns:
             Dictionary with model state
         """
@@ -110,10 +110,10 @@ class BPRModel(BaseRecommender, FactorizationModelMixin):
             "user_factors": self.user_factors,
             "item_factors": self.item_factors,
         }
-    
+
     def _set_model_state(self, model_state: Dict[str, Any]) -> None:
         """Set model state from deserialized data.
-        
+
         Args:
             model_state: Dictionary with model state
         """

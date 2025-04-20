@@ -100,9 +100,7 @@ class GRU4Rec(BaseRecommender):
         session = kwargs.get("session", [])
         return self.predict_next_items(session, n_items)
 
-    def predict_next_items(
-        self, session: List[int], k: int = 10
-    ) -> Tuple[NDArray[np.int_], NDArray[np.float32]]:
+    def predict_next_items(self, session: List[int], k: int = 10) -> Tuple[NDArray[np.int_], NDArray[np.float32]]:
         """Predict next items for a session.
 
         Args:

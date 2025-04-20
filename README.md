@@ -210,13 +210,52 @@ poetry run pytest
 
 ## API Endpoints
 
+### Cache Management Endpoints
+
+The API includes endpoints for managing the recommendation caches:
+
+```
+POST /cache/clear
+```
+Clears all caches (recommendation and similar-items caches)
+
+```
+POST /cache/config?enabled=<true|false>&default_ttl=<seconds>
+```
+Configure cache settings globally
+
+**Parameters**:
+- `enabled` (required): Whether to enable caching (true/false)
+- `default_ttl` (optional): Default TTL in seconds for all caches (0-3600, default: 300)
+
+**Response**:
+```json
+{
+  "status": "success",
+  "cache_enabled": true,
+  "default_ttl": 300,
+  "recommendation_cache": {
+    "size": 10,
+    "hits": 45,
+    "misses": 12,
+    "hit_rate": 0.789
+  },
+  "similar_items_cache": {
+    "size": 5,
+    "hits": 23,
+    "misses": 8,
+    "hit_rate": 0.742
+  }
+}
+```
+
 ### Recommendation Endpoint
 
 ```
-GET /recommend?user_id=<user_id>&k=<k>&use_faiss=<true|false>&page=<page>&page_size=<page_size>&categories=<cat1>&categories=<cat2>&brands=<brand1>&min_price=<min>&max_price=<max>&exclude_items=<item1>&include_items=<item2>
+GET /recommend?user_id=<user_id>&k=<k>&use_faiss=<true|false>&page=<page>&page_size=<page_size>&categories=<cat1>&categories=<cat2>&brands=<brand1>&min_price=<min>&max_price=<max>&exclude_items=<item1>&include_items=<item2>&rerank=<true|false>&rerank_strategy=<strategy>&diversity_weight=<0-1>&use_cache=<true|false>&cache_ttl=<seconds>
 ```
 
-Returns a list of recommended items for a user with pagination and filtering support.
+Returns a list of recommended items for a user with pagination, filtering, personalized reranking, and caching support.
 
 **Parameters**:
 - `user_id` (required): User ID to get recommendations for
@@ -235,6 +274,19 @@ Returns a list of recommended items for a user with pagination and filtering sup
 - `exclude_items` (optional): Item IDs to exclude (can specify multiple)
 - `include_items` (optional): Limit to these item IDs (can specify multiple)
 
+**Reranking Parameters**:
+- `rerank` (optional): Whether to apply reranking strategy (default: false)
+- `rerank_strategy` (optional): Reranking strategy to use: diversity, novelty, popularity, or hybrid (default: hybrid)
+- `diversity_weight` (optional): Weight for diversity component, 0-1 (default: 0.2)
+- `novelty_weight` (optional): Weight for novelty component, 0-1 (default: 0.2)
+- `popularity_weight` (optional): Weight for popularity component, 0-1 (default: 0.2)
+- `relevance_weight` (optional): Weight for baseline relevance, 0-1 (default: 0.4)
+
+**Cache Parameters**:
+- `use_cache` (optional): Whether to use cache if available (default: true)
+- `cache_ttl` (optional): Cache time-to-live in seconds, 0-3600 (default: 300)
+- `invalidate_cache` (optional): Force refresh of cache for this request (default: false)
+
 **Response**:
 ```json
 {
@@ -247,7 +299,18 @@ Returns a list of recommended items for a user with pagination and filtering sup
       "category": "Category",
       "brand": "Brand",
       "price": 99.99,
-      "img_url": "https://example.com/image.jpg"
+      "img_url": "https://example.com/image.jpg",
+      "explanation": "Recommended based on your interests"
+    },
+    {
+      "item_id": "item789",
+      "score": 0.87,
+      "title": "Another Product",
+      "category": "Clothing",
+      "brand": "FashionCo", 
+      "price": 49.99,
+      "img_url": "https://example.com/image2.jpg",
+      "explanation": "Adding variety with this Clothing item"
     },
     ...
   ],
@@ -266,6 +329,27 @@ Returns a list of recommended items for a user with pagination and filtering sup
       "categories": ["Electronics", "Tech"],
       "min_price": 10.0,
       "max_price": 100.0
+    },
+    "cache": {
+      "hit": true,
+      "ttl": 300,
+      "invalidated": false
+    },
+    "reranking": {
+      "strategy": "hybrid",
+      "applied": true,
+      "weights": {
+        "diversity": 0.2,
+        "novelty": 0.2,
+        "popularity": 0.2,
+        "relevance": 0.4
+      },
+      "category_distribution": {
+        "Electronics": 4,
+        "Clothing": 2,
+        "Home": 3,
+        "Books": 1
+      }
     }
   }
 }
@@ -279,10 +363,10 @@ Returns a list of recommended items for a user with pagination and filtering sup
 ### Similar Items Endpoint
 
 ```
-GET /similar-items?item_id=<item_id>&k=<k>&page=<page>&page_size=<page_size>&categories=<cat1>&brands=<brand1>&min_price=<min>&max_price=<max>&exclude_items=<item1>
+GET /similar-items?item_id=<item_id>&k=<k>&page=<page>&page_size=<page_size>&categories=<cat1>&brands=<brand1>&min_price=<min>&max_price=<max>&exclude_items=<item1>&rerank=<true|false>&rerank_strategy=<strategy>&diversity_weight=<0-1>&use_cache=<true|false>&cache_ttl=<seconds>
 ```
 
-Returns a list of items similar to the given item with pagination and filtering support.
+Returns a list of items similar to the given item with pagination, filtering, personalized reranking and caching support.
 
 **Parameters**:
 - `item_id` (required): Item ID to find similar items for
@@ -299,6 +383,19 @@ Returns a list of items similar to the given item with pagination and filtering 
 - `max_price` (optional): Maximum price filter
 - `exclude_items` (optional): Item IDs to exclude (can specify multiple)
 
+**Reranking Parameters**:
+- `rerank` (optional): Whether to apply reranking strategy (default: false)
+- `rerank_strategy` (optional): Reranking strategy to use: diversity, novelty, popularity, or hybrid (default: diversity)
+- `diversity_weight` (optional): Weight for diversity component, 0-1 (default: 0.3)
+- `novelty_weight` (optional): Weight for novelty component, 0-1 (default: 0.1)
+- `popularity_weight` (optional): Weight for popularity component, 0-1 (default: 0.2)
+- `relevance_weight` (optional): Weight for baseline relevance, 0-1 (default: 0.4)
+
+**Cache Parameters**:
+- `use_cache` (optional): Whether to use cache if available (default: true)
+- `cache_ttl` (optional): Cache time-to-live in seconds, 0-3600 (default: 300)
+- `invalidate_cache` (optional): Force refresh of cache for this request (default: false)
+
 **Response**:
 ```json
 {
@@ -311,7 +408,8 @@ Returns a list of items similar to the given item with pagination and filtering 
       "category": "Category",
       "brand": "Brand",
       "price": 79.99,
-      "img_url": "https://example.com/similar.jpg"
+      "img_url": "https://example.com/similar.jpg",
+      "explanation": "Adding variety with this Category item"
     },
     ...
   ],
@@ -329,6 +427,26 @@ Returns a list of items similar to the given item with pagination and filtering 
     "filters_applied": {
       "brands": ["BrandName"],
       "excluded_items": 2
+    },
+    "cache": {
+      "hit": true,
+      "ttl": 300,
+      "invalidated": false
+    },
+    "reranking": {
+      "strategy": "diversity",
+      "applied": true,
+      "weights": {
+        "diversity": 0.3,
+        "novelty": 0.1,
+        "popularity": 0.2,
+        "relevance": 0.4
+      },
+      "category_distribution": {
+        "Category": 3,
+        "OtherCategory": 2,
+        "ThirdCategory": 5
+      }
     }
   }
 }

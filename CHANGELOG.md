@@ -5,7 +5,7 @@ All notable changes to the RecSys-Lite project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] - 2025-04-20
 
 ### Added
 - Pagination support for recommendation and similar-items endpoints
@@ -16,11 +16,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Item exclusion and inclusion lists
 - Enhanced response format with pagination and filter information
 - Automatic buffer sizing when filtering to maintain result count
+- Response caching with time-to-live (TTL) expiry for recommendation endpoints
+- Cache management endpoints for clearing and configuring caches
+- Personalized reranking capabilities:
+  - Diversity-focused reranking to provide variety across categories
+  - Novelty-based reranking to surface less obvious recommendations
+  - Popularity-weighted reranking for trending items
+  - Hybrid reranking combining multiple strategies
+- Explanations for recommendations based on reranking strategy
+- Configurable weights for reranking components
+- Cache hit/miss statistics and metrics
 
 ### Changed
 - Recommendation endpoints now use a more consistent response format
 - Similar-items endpoint now returns same format as recommendations endpoint
 - Improved error handling for pagination and filter parameters
+- More efficient recommendation processing with caching
+- Enhanced API metrics with cache performance statistics
 
 ## [0.2.0] - 2025-04-19
 

@@ -41,9 +41,15 @@ def queue_ingest_command(
     db: Path = typer.Option("recsys.db", help="DuckDB database to append to"),
     batch_size: int = typer.Option(100, help="Number of messages to process in a batch"),
     poll_interval: int = typer.Option(5, help="Polling interval in seconds"),
-    **kwargs: dict
 ) -> None:
     """Run a *message queue* based streaming ingest process."""
-    queue_config = kwargs
+    # NOTE: Specific queue configuration flags (e.g. rabbitmq_host) are not supported in this command.
+    queue_config = {}
     typer.echo(f"Starting {queue_type.value} queue ingest – batch size: {batch_size}, interval: {poll_interval}s")
-    queue_ingest(queue_config=queue_config, db_path=db, queue_type=queue_type.value, batch_size=batch_size, poll_interval=poll_interval)
+    queue_ingest(
+        queue_config=queue_config,
+        db_path=db,
+        queue_type=queue_type.value,
+        batch_size=batch_size,
+        poll_interval=poll_interval,
+    )

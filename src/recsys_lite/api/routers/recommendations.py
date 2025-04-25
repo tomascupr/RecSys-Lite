@@ -1,17 +1,17 @@
 """Router for recommendation endpoints."""
 
-import logging
 from typing import List
 
 from fastapi import APIRouter, Depends, Query
 
 from recsys_lite.api.dependencies import get_api_state, get_recommendation_service
-from recsys_lite.api.errors import ItemNotFoundError, ModelNotInitializedError, UserNotFoundError
+from recsys_lite.api.errors import ItemNotFoundError, ModelNotInitializedError, UserNotFoundError, VectorRetrievalError
 from recsys_lite.api.models import Recommendation, RecommendationResponse
 from recsys_lite.api.services import RecommendationService
 from recsys_lite.api.state import APIState
+from recsys_lite.utils.logging import get_logger, log_exception, LogLevel
 
-logger = logging.getLogger("recsys-lite.api")
+logger = get_logger("api.routers.recommendations")
 
 router = APIRouter()
 
@@ -60,6 +60,7 @@ async def recommend(
     Raises:
         UserNotFoundError: If user ID is not found
         ModelNotInitializedError: If recommendation system is not initialized
+        VectorRetrievalError: If vector retrieval fails
     """
     try:
         # Get more recommendations than requested to allow for filtering
@@ -70,6 +71,18 @@ async def recommend(
         # Cap at a reasonable maximum
         buffer_k = min(buffer_k, 1000)
         
+        logger.debug(
+            f"Generating recommendations for user {user_id}",
+            extra={
+                "user_id": user_id,
+                "k": k,
+                "buffer_k": buffer_k,
+                "use_faiss": use_faiss,
+                "page": page,
+                "page_size": page_size
+            }
+        )
+        
         # Get recommendations
         item_ids, scores, item_metadata = recommendation_service.recommend_for_user(
             user_id=user_id, k=buffer_k, use_faiss=use_faiss
@@ -78,6 +91,19 @@ async def recommend(
         # Apply filtering if any filter parameters were provided
         filter_info = None
         if any([categories, brands, min_price is not None, max_price is not None, exclude_items, include_items]):
+            logger.debug(
+                f"Applying filters to recommendations for user {user_id}",
+                extra={
+                    "user_id": user_id,
+                    "categories": categories,
+                    "brands": brands,
+                    "min_price": min_price,
+                    "max_price": max_price,
+                    "exclude_items_count": len(exclude_items) if exclude_items else 0,
+                    "include_items_count": len(include_items) if include_items else 0
+                }
+            )
+            
             item_ids, scores, item_metadata, filter_info = recommendation_service.filter_recommendations(
                 item_ids=item_ids,
                 scores=scores,
@@ -93,6 +119,16 @@ async def recommend(
         # Apply pagination
         pagination_info = None
         if page > 1 or len(item_ids) > page_size:
+            logger.debug(
+                f"Applying pagination to recommendations for user {user_id}",
+                extra={
+                    "user_id": user_id,
+                    "page": page,
+                    "page_size": page_size,
+                    "total_items": len(item_ids)
+                }
+            )
+            
             item_ids, scores, item_metadata, pagination_info = recommendation_service.paginate_results(
                 item_ids=item_ids,
                 scores=scores,
@@ -118,6 +154,17 @@ async def recommend(
         # Update metrics
         state.increase_recommendation_count(len(recommendations))
 
+        logger.info(
+            f"Generated {len(recommendations)} recommendations for user {user_id}",
+            extra={
+                "user_id": user_id,
+                "recommendation_count": len(recommendations),
+                "use_faiss": use_faiss,
+                "filtered": filter_info is not None,
+                "paginated": pagination_info is not None
+            }
+        )
+
         # Return response
         return RecommendationResponse(
             user_id=user_id,
@@ -125,12 +172,24 @@ async def recommend(
             pagination=pagination_info,
             filter_info=filter_info,
         )
-    except (UserNotFoundError, ModelNotInitializedError):
+    except (UserNotFoundError, ModelNotInitializedError, VectorRetrievalError):
         # Known errors - re-raise to be handled by exception handlers
         raise
     except Exception as e:
         # Unexpected errors
-        logger.exception(f"Error generating recommendations: {e}")
+        log_exception(
+            logger,
+            "Error generating recommendations",
+            e,
+            level=LogLevel.ERROR,
+            extra={
+                "user_id": user_id,
+                "k": k,
+                "use_faiss": use_faiss,
+                "page": page,
+                "page_size": page_size
+            }
+        )
         state.increase_error_count()
         raise
 
@@ -175,6 +234,7 @@ async def similar_items(
     Raises:
         ItemNotFoundError: If item ID is not found
         ModelNotInitializedError: If recommendation system is not initialized
+        VectorRetrievalError: If vector retrieval fails
     """
     try:
         # Get more recommendations than requested to allow for filtering
@@ -184,6 +244,17 @@ async def similar_items(
         
         # Cap at a reasonable maximum
         buffer_k = min(buffer_k, 1000)
+        
+        logger.debug(
+            f"Finding similar items for item {item_id}",
+            extra={
+                "item_id": item_id,
+                "k": k,
+                "buffer_k": buffer_k,
+                "page": page,
+                "page_size": page_size
+            }
+        )
         
         # Get similar items
         item_ids, scores, item_metadata = recommendation_service.find_similar_items(item_id=item_id, k=buffer_k)
@@ -197,6 +268,18 @@ async def similar_items(
         # Apply filtering if any filter parameters were provided
         filter_info = None
         if any([categories, brands, min_price is not None, max_price is not None, exclude_items]):
+            logger.debug(
+                f"Applying filters to similar items for item {item_id}",
+                extra={
+                    "item_id": item_id,
+                    "categories": categories,
+                    "brands": brands,
+                    "min_price": min_price,
+                    "max_price": max_price,
+                    "exclude_items_count": len(exclude_items) if exclude_items else 0
+                }
+            )
+            
             item_ids, scores, item_metadata, filter_info = recommendation_service.filter_recommendations(
                 item_ids=item_ids,
                 scores=scores,
@@ -212,6 +295,16 @@ async def similar_items(
         # Apply pagination
         pagination_info = None
         if page > 1 or len(item_ids) > page_size:
+            logger.debug(
+                f"Applying pagination to similar items for item {item_id}",
+                extra={
+                    "item_id": item_id,
+                    "page": page,
+                    "page_size": page_size,
+                    "total_items": len(item_ids)
+                }
+            )
+            
             item_ids, scores, item_metadata, pagination_info = recommendation_service.paginate_results(
                 item_ids=item_ids,
                 scores=scores,
@@ -237,6 +330,16 @@ async def similar_items(
         # Update metrics
         state.increase_recommendation_count(len(recommendations))
 
+        logger.info(
+            f"Found {len(recommendations)} similar items for item {item_id}",
+            extra={
+                "item_id": item_id,
+                "similar_items_count": len(recommendations),
+                "filtered": filter_info is not None,
+                "paginated": pagination_info is not None
+            }
+        )
+
         # Return response
         return RecommendationResponse(
             user_id=item_id,  # Use item_id as user_id for similar items
@@ -244,11 +347,22 @@ async def similar_items(
             pagination=pagination_info,
             filter_info=filter_info,
         )
-    except (ItemNotFoundError, ModelNotInitializedError):
+    except (ItemNotFoundError, ModelNotInitializedError, VectorRetrievalError):
         # Known errors - re-raise to be handled by exception handlers
         raise
     except Exception as e:
         # Unexpected errors
-        logger.exception(f"Error finding similar items: {e}")
+        log_exception(
+            logger,
+            "Error finding similar items",
+            e,
+            level=LogLevel.ERROR,
+            extra={
+                "item_id": item_id,
+                "k": k,
+                "page": page,
+                "page_size": page_size
+            }
+        )
         state.increase_error_count()
         raise

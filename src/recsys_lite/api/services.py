@@ -1,18 +1,123 @@
 """Service layer for RecSys-Lite API."""
 
-from typing import Any, Dict, List, Optional, Tuple, cast
+from enum import Enum
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import numpy as np
 import scipy.sparse as sp
 from numpy.typing import NDArray
 
-from recsys_lite.api.errors import ItemNotFoundError, ModelNotInitializedError, UserNotFoundError
+from recsys_lite.api.errors import (
+    ItemNotFoundError, 
+    ModelNotInitializedError, 
+    UserNotFoundError,
+    VectorRetrievalError
+)
 from recsys_lite.models.base import BaseRecommender, VectorProvider
+from recsys_lite.utils.logging import get_logger, log_exception, LogLevel
+
+logger = get_logger("api.services")
+
+
+class EntityType(str, Enum):
+    """Entity type enum for vector retrieval."""
+
+    USER = "user"
+    ITEM = "item"
 
 
 class VectorService:
     """Service for retrieving vector representations from different model types."""
 
+    def get_vector(
+        self, 
+        model: BaseRecommender, 
+        entity_type: EntityType,
+        entity_idx: int, 
+        entity_id: Optional[str] = None,
+        vector_size: Optional[int] = None
+    ) -> NDArray[np.float32]:
+        """Get vector representation for an entity (user or item).
+
+        Args:
+            model: Recommendation model
+            entity_type: Type of entity (USER or ITEM)
+            entity_idx: Entity index
+            entity_id: Entity ID string (for error reporting)
+            vector_size: Vector size for fallback random vector
+
+        Returns:
+            Entity vector as numpy array
+
+        Raises:
+            VectorRetrievalError: If vector retrieval fails
+        """
+        try:
+            # Determine which methods to call based on entity type
+            if entity_type == EntityType.USER:
+                vector_method = "get_user_vectors"
+                factors_method = "get_user_factors"
+                entity_indices = [entity_idx]
+            else:  # EntityType.ITEM
+                vector_method = "get_item_vectors"
+                factors_method = "get_item_factors"
+                entity_indices = [entity_idx]
+
+            # Try using the standardized interface first
+            if hasattr(model, vector_method):
+                vector_provider = cast(VectorProvider, model)
+                try:
+                    method = getattr(vector_provider, vector_method)
+                    vectors = method(entity_indices)
+                    
+                    # Only accept numpy arrays from providers
+                    if isinstance(vectors, np.ndarray) and vectors.size > 0:
+                        return cast(NDArray[np.float32], vectors[0].reshape(1, -1).astype(np.float32))
+                except Exception as e:
+                    log_exception(
+                        logger,
+                        f"Failed to get {entity_type.value} vector using {vector_method}",
+                        e,
+                        level=LogLevel.WARNING,
+                        extra={"entity_idx": entity_idx, "entity_id": entity_id}
+                    )
+
+            # Fallback for older model implementations
+            if hasattr(model, factors_method):
+                try:
+                    factors_getter = getattr(model, factors_method)
+                    factors = factors_getter()
+                    if factors is not None and entity_idx < len(factors):
+                        return cast(NDArray[np.float32], factors[entity_idx].reshape(1, -1).astype(np.float32))
+                except Exception as e:
+                    log_exception(
+                        logger,
+                        f"Failed to get {entity_type.value} vector using {factors_method}",
+                        e,
+                        level=LogLevel.WARNING,
+                        extra={"entity_idx": entity_idx, "entity_id": entity_id}
+                    )
+
+            # Fallback to random vector
+            if vector_size is None:
+                vector_size = getattr(model, "factors", 100)
+                
+            logger.info(
+                f"Using random vector for {entity_type.value} {entity_id or entity_idx}",
+                extra={"vector_size": vector_size}
+            )
+            return cast(NDArray[np.float32], np.random.random(vector_size).astype(np.float32).reshape(1, -1))
+            
+        except Exception as e:
+            # Catch any unexpected errors
+            error_msg = f"Unexpected error retrieving {entity_type.value} vector"
+            log_exception(logger, error_msg, e, level=LogLevel.ERROR)
+            raise VectorRetrievalError(
+                entity_type=entity_type.value,
+                entity_id=str(entity_id) if entity_id else str(entity_idx),
+                reason=str(e)
+            )
+    
     def get_user_vector(
         self, model: BaseRecommender, user_idx: int, vector_size: Optional[int] = None
     ) -> NDArray[np.float32]:
@@ -26,64 +131,34 @@ class VectorService:
         Returns:
             User vector as numpy array
         """
-        if hasattr(model, "get_user_vectors"):
-            # Use the standardized interface if available
-            vector_provider = cast(VectorProvider, model)
-            try:
-                user_vectors = vector_provider.get_user_vectors([user_idx])
-            except Exception:
-                user_vectors = np.zeros((0, 0), dtype=np.float32)
-            # Only accept numpy arrays from providers
-            if isinstance(user_vectors, np.ndarray) and user_vectors.size > 0:
-                return cast(NDArray[np.float32], user_vectors[0].reshape(1, -1).astype(np.float32))
-
-        # Fallback for older model implementations
-        if hasattr(model, "get_user_factors"):
-            user_factors = model.get_user_factors()
-            if user_factors is not None and user_idx < len(user_factors):
-                return cast(NDArray[np.float32], user_factors[user_idx].reshape(1, -1).astype(np.float32))
-
-        # Fallback to random vector
-        if vector_size is None:
-            vector_size = getattr(model, "factors", 100)
-        return cast(NDArray[np.float32], np.random.random(vector_size).astype(np.float32).reshape(1, -1))
+        return self.get_vector(
+            model=model,
+            entity_type=EntityType.USER,
+            entity_idx=user_idx,
+            vector_size=vector_size
+        )
 
     def get_item_vector(
-        self, model: BaseRecommender, item_idx: int, item_id: str, vector_size: Optional[int] = None
+        self, model: BaseRecommender, item_idx: int, item_id: Optional[str] = None, vector_size: Optional[int] = None
     ) -> NDArray[np.float32]:
         """Get item vector from model.
 
         Args:
             model: Recommendation model
             item_idx: Item index
-            item_id: Item ID string
+            item_id: Item ID string (for error reporting)
             vector_size: Vector size for fallback random vector
 
         Returns:
             Item vector as numpy array
         """
-        if hasattr(model, "get_item_vectors"):
-            # Use the standardized interface if available
-            vector_provider = cast(VectorProvider, model)
-            try:
-                # Pass the item index to the provider (for factorization models)
-                item_vectors = vector_provider.get_item_vectors([item_idx])
-            except Exception:
-                item_vectors = np.zeros((0, 0), dtype=np.float32)
-            # Only accept numpy arrays from providers
-            if isinstance(item_vectors, np.ndarray) and item_vectors.size > 0:
-                return cast(NDArray[np.float32], item_vectors[0].reshape(1, -1).astype(np.float32))
-
-        # Fallback for older model implementations
-        if hasattr(model, "get_item_factors"):
-            item_factors = model.get_item_factors()
-            if item_factors is not None and item_idx < len(item_factors):
-                return cast(NDArray[np.float32], item_factors[item_idx].reshape(1, -1).astype(np.float32))
-
-        # Fallback to random vector
-        if vector_size is None:
-            vector_size = getattr(model, "factors", 100)
-        return cast(NDArray[np.float32], np.random.random(vector_size).astype(np.float32).reshape(1, -1))
+        return self.get_vector(
+            model=model,
+            entity_type=EntityType.ITEM,
+            entity_idx=item_idx,
+            entity_id=item_id,
+            vector_size=vector_size
+        )
 
 
 class RecommendationService:
@@ -167,29 +242,53 @@ class RecommendationService:
         Returns:
             Tuple of (item_ids, scores, item_metadata)
         """
-        # Get user vector
-        user_vector = self.vector_service.get_user_vector(
-            model=self.model, user_idx=user_idx, vector_size=self.faiss_index.d
-        )
+        try:
+            # Get user vector
+            user_vector = self.vector_service.get_vector(
+                model=self.model, 
+                entity_type=EntityType.USER,
+                entity_idx=user_idx, 
+                vector_size=self.faiss_index.d
+            )
 
-        # Search for similar items
-        distances, indices = self.faiss_index.search(user_vector, k)
+            # Search for similar items
+            distances, indices = self.faiss_index.search(user_vector, k)
 
-        # Process results
-        item_ids = []
-        scores = []
+            # Process results
+            item_ids = []
+            scores = []
 
-        for idx, score in zip(indices[0], distances[0], strict=False):
-            if idx == -1:  # Faiss returns -1 for no results
-                continue
+            for idx, score in zip(indices[0], distances[0], strict=False):
+                if idx == -1:  # Faiss returns -1 for no results
+                    continue
 
-            # Get item ID from index
-            item_id = self.reverse_item_mapping.get(int(idx), f"unknown_{idx}")
-            item_ids.append(item_id)
-            scores.append(float(score))
+                # Get item ID from index
+                item_id = self.reverse_item_mapping.get(int(idx), f"unknown_{idx}")
+                item_ids.append(item_id)
+                scores.append(float(score))
 
-        scores_list = [float(score) for score in scores]
-        return item_ids, scores_list, self._get_item_metadata(item_ids, item_data)
+            scores_list = [float(score) for score in scores]
+            
+            logger.debug(
+                f"Generated {len(item_ids)} recommendations for user {user_idx} using Faiss",
+                extra={"user_idx": user_idx, "recommendation_count": len(item_ids)}
+            )
+            
+            return item_ids, scores_list, self._get_item_metadata(item_ids, item_data)
+            
+        except VectorRetrievalError:
+            # Re-raise vector retrieval errors
+            raise
+        except Exception as e:
+            # Log and wrap other errors
+            log_exception(
+                logger,
+                "Error generating Faiss recommendations",
+                e,
+                level=LogLevel.ERROR,
+                extra={"user_idx": user_idx, "k": k}
+            )
+            raise
 
     def _get_direct_recommendations(
         self, user_idx: int, k: int, item_data: Optional[Dict[str, Dict[str, Any]]] = None
@@ -399,6 +498,7 @@ class RecommendationService:
         Raises:
             ModelNotInitializedError: If recommender system is not initialized
             ItemNotFoundError: If item ID is not found
+            VectorRetrievalError: If vector retrieval fails
         """
         if not self.faiss_index:
             raise ModelNotInitializedError()
@@ -408,19 +508,43 @@ class RecommendationService:
 
         item_idx = int(self.item_mapping[item_id])
 
-        # Get item vector
-        item_vector = self.vector_service.get_item_vector(
-            model=self.model, item_idx=item_idx, item_id=item_id, vector_size=self.faiss_index.d
-        )
+        try:
+            # Get item vector
+            item_vector = self.vector_service.get_vector(
+                model=self.model, 
+                entity_type=EntityType.ITEM,
+                entity_idx=item_idx, 
+                entity_id=item_id,
+                vector_size=self.faiss_index.d
+            )
 
-        # Search for similar items
-        # +1 to account for the item itself
-        distances, indices = self.faiss_index.search(item_vector, k + 1)
+            # Search for similar items
+            # +1 to account for the item itself
+            distances, indices = self.faiss_index.search(item_vector, k + 1)
 
-        # Process results
-        item_ids = []
-        scores = []
-        seen_items = set()  # To avoid duplicates
+            # Process results
+            item_ids = []
+            scores = []
+            seen_items = set()  # To avoid duplicates
+            
+            logger.debug(
+                f"Finding similar items for item {item_id}",
+                extra={"item_id": item_id, "item_idx": item_idx, "k": k}
+            )
+            
+        except VectorRetrievalError:
+            # Re-raise vector retrieval errors
+            raise
+        except Exception as e:
+            # Log and wrap other errors
+            log_exception(
+                logger,
+                "Error finding similar items",
+                e,
+                level=LogLevel.ERROR,
+                extra={"item_id": item_id, "item_idx": item_idx, "k": k}
+            )
+            raise
 
         for idx, score in zip(indices[0], distances[0], strict=False):
             if idx == -1:  # Faiss returns -1 for no results

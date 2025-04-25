@@ -1,6 +1,5 @@
 """FastAPI service for RecSys-Lite."""
 
-import logging
 from pathlib import Path
 from typing import Any, Callable, Union, cast
 
@@ -10,13 +9,11 @@ from recsys_lite.api.dependencies import get_api_state
 from recsys_lite.api.errors import add_error_handlers
 from recsys_lite.api.loaders import setup_recommendation_service
 from recsys_lite.api.routers import health, recommendations
+from recsys_lite.utils.logging import configure_logging, get_logger, LogLevel
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
-logger = logging.getLogger("recsys-lite.api")
+configure_logging(level=LogLevel.INFO)
+logger = get_logger("api")
 
 
 def create_app(model_dir: Union[str, Path] = "model_artifacts/als") -> FastAPI:
@@ -78,9 +75,23 @@ def create_app(model_dir: Union[str, Path] = "model_artifacts/als") -> FastAPI:
             state.reverse_user_mapping = {int(v): k for k, v in rec_service.user_mapping.items()}
             state.reverse_item_mapping = {int(v): k for k, v in rec_service.item_mapping.items()}
 
-            logger.info(f"API initialized with model type: {rec_service.model_type}")
+            logger.info(
+                f"API initialized with model type: {rec_service.model_type}",
+                extra={
+                    "model_type": rec_service.model_type,
+                    "user_count": len(state.user_mapping),
+                    "item_count": len(state.item_mapping)
+                }
+            )
         except Exception as e:
-            logger.error(f"Error loading model artifacts: {e}")
+            from recsys_lite.utils.logging import log_exception
+            log_exception(
+                logger, 
+                "Error loading model artifacts", 
+                e, 
+                level=LogLevel.ERROR,
+                extra={"model_dir": str(model_dir)}
+            )
             # Allow API to start without model for health checks
             # Recommendation endpoints will return appropriate errors
 

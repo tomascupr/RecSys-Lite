@@ -97,6 +97,11 @@ graph TD
   - IVF-Flat index for efficient similarity search
   - Optimized for CPU environment
   - Support for incremental updates
+  
+- **Vector Service**: Unified vector retrieval system
+  - Consistent interface for retrieving user and item vectors
+  - Graceful fallback mechanisms for different model types
+  - Robust error handling with detailed error messages
 
 - **FastAPI**: RESTful API for serving recommendations
   - Endpoints:
@@ -105,6 +110,8 @@ graph TD
     - `/metrics` - Performance and operation metrics
     - `/health` - Health check
   - JSON responses with item metadata
+  - Standardized error handling with consistent error responses
+  - Structured logging with context information
 
 - **Update Worker**: Micro-batch worker that updates models incrementally
   - Runs every 60 seconds
@@ -200,3 +207,8 @@ The entire system is packaged in a Docker image (<1GB) for easy deployment:
 - **Health Checks**: API and worker status
 - **Retraining**: Recommended weekly for optimal performance
 - **Backup**: Artifacts can be easily backed up from the model_artifacts directory
+- **Logging System**: 
+  - Centralized logging configuration
+  - Structured logging with context information
+  - Consistent log levels and formats
+  - Support for file and console logging
